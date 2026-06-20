@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Mi Cartola Real</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Mi Cartola" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%2310b981'/%3E%3Ctext x='50%25' y='58%25' font-size='110' text-anchor='middle' fill='%23000' font-family='Arial'%3E%24%3C/text%3E%3C/svg%3E" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: {
+        ink:'#0a0a0b', panel:'#161618', panel2:'#1f1f22',
+        line:'#2a2a2e', ingreso:'#10b981', gasto:'#f87171'
+      }}}
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+  <style>
+    html,body{background:#0a0a0b;-webkit-tap-highlight-color:transparent}
+    body{padding-top:env(safe-area-inset-top)}
+    .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+    .desc-full{word-break:break-word;overflow-wrap:anywhere;white-space:normal;line-height:1.35}
+    .tab-active{color:#10b981}
+  </style>
+</head>
+<body class="font-sans text-white antialiased select-none">
+
+<header class="px-5 pt-4 pb-3 sticky top-0 z-20 bg-ink/90 backdrop-blur border-b border-line" style="padding-top:calc(env(safe-area-inset-top)+.5rem)">
+  <div class="flex items-center justify-between gap-2">
+    <div class="min-w-0">
+      <h1 class="text-lg font-semibold tracking-tight">Mi Cartola</h1>
+      <p id="fileLabel" class="text-xs text-white/40 truncate">Inicia sesión para sincronizar</p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <span id="syncStatus" class="text-[10px] text-white/30"></span>
+      <button id="logoutBtn" class="hidden text-xs text-white/50 border border-line rounded-full px-3 py-1.5">Salir</button>
+    </div>
+  </div>
+</header>
+
+<main class="pb-28 max-w-md mx-auto">
+
+  <section id="view-inicio" class="px-5 pt-5">
+    <label id="dropzone" class="block rounded-3xl border-2 border-dashed border-line bg-panel/60 px-6 py-8 text-center cursor-pointer active:scale-[.99] transition">
+      <div class="mx-auto mb-3 h-12 w-12 rounded-2xl bg-ingreso/15 flex items-center justify-center">
+        <svg viewBox="0 0 24 24" class="h-6 w-6 text-ingreso" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        </svg>
+      </div>
+      <p id="dropzoneTitle" class="font-medium text-sm">Cargar Cartola Santander</p>
+      <p id="dropzoneSub" class="mt-0.5 text-xs text-white/40">Excel (.xlsx)</p>
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
+    </label>
+    <p id="errorBox" class="hidden mt-4 text-sm text-gasto bg-gasto/10 border border-gasto/30 rounded-xl px-4 py-3"></p>
+    <div id="summary" class="hidden mt-4 space-y-4">
+      <div class="rounded-3xl bg-panel border border-line p-5">
+        <p class="text-xs uppercase tracking-wide text-white/40">Dinero Total Disponible Real</p>
+        <p id="balDispo" class="num mt-1 text-3xl font-semibold">$0</p>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-panel2 border border-line p-3">
+            <p class="text-[11px] text-white/40">Cuenta Corriente</p>
+            <p id="balCC" class="num text-lg font-semibold">$0</p>
+          </div>
+          <div class="rounded-2xl bg-panel2 border border-line p-3">
+            <p class="text-[11px] text-white/40">Línea Crédito Disp.</p>
+            <p id="balLinea" class="num text-lg font-semibold" style="color:#fbbf24">$0</p>
+            <p id="balLineaSub" class="text-[10px] text-white/35 mt-0.5"></p>
+          </div>
+        </div>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-panel2 border border-line p-3">
+            <p class="text-[11px] text-white/40">Total Entradas</p>
+            <p id="totEntradas" class="num text-lg font-semibold text-ingreso">$0</p>
+          </div>
+          <div class="rounded-2xl bg-panel2 border border-line p-3">
+            <p class="text-[11px] text-white/40">Total Gastos</p>
+            <p id="totGastos" class="num text-lg font-semibold text-gasto">$0</p>
+          </div>
+        </div>
+        <p class="text-[10px] text-white/30 mt-3">Entradas y gastos excluyen ruido bancario y dinero que solo pasó por la cuenta.</p>
+      </div>
+      <button id="internalToggle" class="hidden w-full flex items-center justify-between gap-3 rounded-2xl bg-panel border border-line px-4 py-3 text-left active:bg-panel2">
+        <span class="text-sm">Ver traspasos LCA e impuestos</span>
+        <span id="knob" class="shrink-0 relative h-6 w-11 rounded-full bg-line">
+          <span id="knobDot" class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+        </span>
+      </button>
+    </div>
+    <div id="emptyHint" class="mt-8 text-center text-sm text-white/35">Sube tu cartola Excel para ver saldos y gastos.</div>
+  </section>
+
+  <section id="view-graficos" class="hidden px-5 pt-5">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold">Gastos por categoría</h2>
+      <button id="addCatBtn" class="text-xs text-ingreso border border-ingreso/30 rounded-full px-3 py-1.5 active:bg-ingreso/10">+ Categoría</button>
+    </div>
+    <div id="chartWrap" class="rounded-3xl bg-panel border border-line p-5 mt-3">
+      <div class="relative mx-auto" style="max-width:240px"><canvas id="pie"></canvas></div>
+      <div id="legend" class="mt-5 space-y-2"></div>
+    </div>
+    <p id="noChart" class="text-center text-sm text-white/40 mt-10">Carga un archivo para ver tus gastos.</p>
+  </section>
+
+  <section id="view-movimientos" class="hidden px-5 pt-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Registros</h2>
+      <div class="flex gap-1 text-xs bg-panel border border-line rounded-full p-1">
+        <button data-filter="all" class="filter-btn px-3 py-1 rounded-full bg-panel2">Todos</button>
+        <button data-filter="in" class="filter-btn px-3 py-1 rounded-full text-white/50">Abonos</button>
+        <button data-filter="out" class="filter-btn px-3 py-1 rounded-full text-white/50">Gastos</button>
+        <button data-filter="otros" class="filter-btn px-3 py-1 rounded-full text-white/50">Otros</button>
+      </div>
+    </div>
+    <ul id="txList" class="space-y-2"></ul>
+  </section>
+
+  <section id="view-categoria" class="hidden px-5 pt-5">
+    <button id="catBackBtn" class="flex items-center gap-2 text-sm text-white/50 mb-4 active:text-white">
+      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+      Volver
+    </button>
+    <div class="rounded-3xl bg-panel border border-line p-5 mb-4">
+      <p class="text-xs uppercase tracking-wide text-white/40">Categoría</p>
+      <p id="catDetailName" class="text-xl font-semibold mt-1">—</p>
+      <p id="catDetailTotal" class="num text-2xl font-semibold mt-2 text-gasto">$0</p>
+      <p id="catDetailCount" class="text-xs text-white/40 mt-1">0 movimientos</p>
+    </div>
+    <ul id="catDetailList" class="space-y-2"></ul>
+  </section>
+</main>
+
+<!-- LOGIN -->
+<div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-5">
+  <div class="w-full max-w-sm rounded-3xl bg-panel border border-line p-6">
+    <h2 class="text-lg font-semibold">Entrar a Mis Flujos</h2>
+    <p class="text-xs text-white/40 mt-1 mb-4">Misma cuenta = mismas categorías en PC y celular</p>
+    <button id="googleBtn" class="w-full flex items-center justify-center gap-2 bg-white text-black font-semibold rounded-xl py-3 mb-4 active:opacity-90">
+      <svg class="h-5 w-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.56 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continuar con Google
+    </button>
+    <div class="border-t border-line pt-4">
+      <input id="authEmail" type="email" placeholder="Correo" class="w-full bg-panel2 border border-line rounded-xl px-4 py-3 text-sm mb-3 focus:outline-none focus:border-ingreso" />
+      <input id="authPass" type="password" placeholder="Contraseña" class="w-full bg-panel2 border border-line rounded-xl px-4 py-3 text-sm mb-2 focus:outline-none focus:border-ingreso" />
+      <p id="authError" class="text-xs text-gasto mb-2 hidden"></p>
+      <button id="authSubmit" class="w-full bg-ingreso text-black font-semibold rounded-xl py-3 active:opacity-90">Entrar con correo</button>
+    </div>
+    <button id="authLocalBtn" class="w-full mt-3 text-xs text-white/40 py-2">Solo este dispositivo (sin nube)</button>
+  </div>
+</div>
+
+<!-- Modal cambiar categoría -->
+<div id="catModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/70">
+  <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8 max-h-[85vh] overflow-y-auto" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
+    <p class="text-sm font-semibold mb-1">Cambiar categoría</p>
+    <p id="catModalDesc" class="desc-full text-xs text-white/50 mb-1"></p>
+    <p id="catModalDate" class="text-xs text-white/30 mb-4"></p>
+    <div id="catModalOptions" class="grid grid-cols-2 gap-2"></div>
+    <button id="catModalAuto" class="w-full mt-3 text-xs text-white/40 py-2 border border-line rounded-xl active:bg-panel2">Volver a automático</button>
+    <button id="catModalCancel" class="w-full mt-2 text-sm text-white/50 py-2">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal nueva categoría -->
+<div id="newCatModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/70">
+  <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
+    <p class="text-sm font-semibold mb-3">Nueva categoría</p>
+    <input id="newCatName" type="text" placeholder="Ej: Veterinaria, Gym..." maxlength="40" class="w-full bg-panel2 border border-line rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-ingreso" />
+    <button id="newCatSave" class="w-full mt-4 bg-ingreso text-black font-semibold rounded-xl py-3">Crear</button>
+    <button id="newCatCancel" class="w-full mt-2 text-sm text-white/50 py-2">Cancelar</button>
+  </div>
+</div>
+
+<nav class="fixed bottom-0 inset-x-0 z-30 bg-ink/95 backdrop-blur border-t border-line" style="padding-bottom:env(safe-area-inset-bottom)">
+  <div class="max-w-md mx-auto grid grid-cols-3">
+    <button data-view="inicio" class="nav-btn flex flex-col items-center gap-1 py-3 tab-active"><span class="text-[10px] font-medium">Inicio</span></button>
+    <button data-view="graficos" class="nav-btn flex flex-col items-center gap-1 py-3 text-white/40"><span class="text-[10px] font-medium">Gastos</span></button>
+    <button data-view="movimientos" class="nav-btn flex flex-col items-center gap-1 py-3 text-white/40"><span class="text-[10px] font-medium">Registros</span></button>
+  </div>
+</nav>
+
+<script>
+// ═══ FIREBASE — proyecto Mis Flujos ═══
+const firebaseConfig = {
+  apiKey: "AIzaSyDxvdAJDlkmS_yxPtYh8zdyMO-La36qUXw",
+  authDomain: "mis-flujos-36cb9.firebaseapp.com",
+  projectId: "mis-flujos-36cb9",
+  storageBucket: "mis-flujos-36cb9.firebasestorage.app",
+  messagingSenderId: "104870597451",
+  appId: "1:104870597451:web:bcb7a70fdffdfd78580ece"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const fmt = n => new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(Math.round(n||0));
+const fmtFecha = d => d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+let BASELINE = { asOf:new Date(2026,5,20), cc:1951, lineaDisp:33995, cupo:300000 };
+const COLOR_POOL = ['#e879f9','#fb923c','#4ade80','#60a5fa','#f472b6','#c084fc','#2dd4bf','#fb7185'];
+
+const BASE_CATS = [
+  {name:'Movimiento Interno Banco',color:'#4b5563',internal:true,neutral:false,kw:['traspaso con la cuenta','traspaso internet desde l','desde lcredito','amortizacion','lca n','impuesto sobregiro','uso lca','intereses linea de credito']},
+  {name:'Pasó por la cuenta',color:'#9ca3af',internal:false,neutral:true,kw:[]},
+  {name:'Remuneraciones',color:'#0ea5e9',internal:false,neutral:false,kw:['remuneracion','sueldo','liquidacion','fundacion','haberes']},
+  {name:'Arriendo',color:'#a855f7',internal:false,neutral:false,kw:['arriendo','arrendamiento','inmobiliaria']},
+  {name:'Luz',color:'#facc15',internal:false,neutral:false,kw:['chilquinta','cge','enel','electricidad','energia','saesa']},
+  {name:'Agua',color:'#06b6d4',internal:false,neutral:false,kw:['esval','aguas andinas','sanitaria']},
+  {name:'Internet y Telefonía',color:'#6366f1',internal:false,neutral:false,kw:['telefonica del sur','movistar','entel','wom','claro','vtr','internet','telefonia']},
+  {name:'Combustible',color:'#78716c',internal:false,neutral:false,kw:['copec','shell','petrobras','bencina','combustible']},
+  {name:'Repuestos Vehículo',color:'#64748b',internal:false,neutral:false,kw:['repuesto','automotriz','neumatico','autopartes']},
+  {name:'Salud',color:'#ec4899',internal:false,neutral:false,kw:['farmacia','cruz verde','salcobrand','clinica']},
+  {name:'Educación',color:'#14b8a6',internal:false,neutral:false,kw:['colegio','universidad','matricula']},
+  {name:'Ropa y Hogar',color:'#d946ef',internal:false,neutral:false,kw:['falabella','paris','ripley','sodimac','homecenter']},
+  {name:'Alimentos',color:'#10b981',internal:false,neutral:false,kw:['unimarc','lider','jumbo','supermercado','minimarket','tottus']},
+  {name:'Kiosco Anabel',color:'#f59e0b',internal:false,neutral:false,kw:['dulce anabel']},
+  {name:'Restaurantes y Comida',color:'#f43f5e',internal:false,neutral:false,kw:['taller la obra','comida rapida','restaurant','mamacocha','rappi']},
+  {name:'Servicios Digitales',color:'#8b5cf6',internal:false,neutral:false,kw:['claude.ai','microsoft','netflix','spotify']},
+  {name:'Seguros y Créditos',color:'#475569',internal:false,neutral:false,kw:['seguro','mapfre','consorcio','credito','cuota','prestamo','bci seguros']},
+  {name:'Transferencias',color:'#38bdf8',internal:false,neutral:false,kw:['transf.','transferencia','deposito','multipago']}
+];
+const DEFAULT_CAT = {name:'Otros Gastos',color:'#71717a',internal:false,neutral:false,kw:[]};
+
+let CUSTOM_CATS=[], OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
+let chart=null, filter='all', includeInternal=false;
+let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null;
+let currentUser=null, cloudEnabled=false, localOnly=false, saveTimer=null;
+
+function normText(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[°º]/g,'').trim();}
+function getAssignable(){return [DEFAULT_CAT,...BASE_CATS.filter(c=>!c.internal),...CUSTOM_CATS.map(c=>({...c,internal:false,neutral:false}))];}
+function findCat(n){
+  if(n===DEFAULT_CAT.name) return DEFAULT_CAT;
+  return BASE_CATS.find(c=>c.name===n)||CUSTOM_CATS.find(c=>c.name===n)||DEFAULT_CAT;
+}
+function catColor(n){return findCat(n).color;}
+function isInternalCat(c){return !!(c&&c.internal);}
+function isNeutralCat(c){return !!(c&&c.neutral);}
+function getPasoCat(){return BASE_CATS.find(c=>c.name==='Pasó por la cuenta');}
+function categorizar(d){const t=normText(d);for(const c of BASE_CATS)if(c.kw.some(k=>t.includes(normText(k))))return c;return DEFAULT_CAT;}
+
+/** Empareja abonos y cargos del mismo monto en ±3 días (ej. seguro que entra y se transfiere). */
+function detectPassthroughPairs(){
+  const PASO=getPasoCat();
+  const used=new Set(), DAY=86400000, MAX=3;
+  const idx=TX.map((t,i)=>({t,i})).filter(({t,i})=>!used.has(i)&&!OVERRIDES[txKey(t)]&&!isInternalCat(getCat(t)));
+  for(let a=0;a<idx.length;a++){
+    const {t:ta,i:ia}=idx[a];
+    if(used.has(ia)) continue;
+    for(let b=a+1;b<idx.length;b++){
+      const {t:tb,i:ib}=idx[b];
+      if(used.has(ib)) continue;
+      if(Math.abs(ta.amount)!==Math.abs(tb.amount)||ta.amount*tb.amount>=0) continue;
+      if(Math.abs(ta.date-tb.date)/DAY>MAX) continue;
+      TX[ia].cat=TX[ib].cat=PASO;
+      used.add(ia); used.add(ib);
+      break;
+    }
+  }
+}
+function txKey(t){return t.date.getTime()+'|'+normText(t.desc)+'|'+t.amount;}
+function getCat(t){return OVERRIDES[txKey(t)]?findCat(OVERRIDES[txKey(t)]):t.cat;}
+function getVisibleTx(){return TX.filter(t=>{
+  const c=getCat(t);
+  if(isInternalCat(c)&&!includeInternal) return false;
+  if(isNeutralCat(c)&&filter!=='otros') return false;
+  return true;
+}).map(t=>({...t,cat:getCat(t)}));}
+function getOperationalTx(){return getVisibleTx().filter(t=>!isNeutralCat(t.cat));}
+
+function serializeTx(){return TX.map(t=>({date:t.date.toISOString(),desc:t.desc,amount:t.amount}));}
+function deserializeTx(arr){
+  TX=arr.map(t=>({date:new Date(t.date),desc:t.desc,amount:t.amount,cat:categorizar(t.desc)}));
+  detectPassthroughPairs();
+  return TX;
+}
+
+function updateDropzoneUI(){
+  const has=TX.length>0;
+  document.getElementById('dropzoneTitle').textContent=has?'Actualizar cartola':'Cargar Cartola Santander';
+  document.getElementById('dropzoneSub').textContent=has?(lastFileName?'Último: '+lastFileName:'Toca para subir nuevo Excel'):'Excel (.xlsx)';
+}
+
+function persistCartola(){
+  if(!TX.length) return;
+  localStorage.setItem('cartola-cache',JSON.stringify({fileName:lastFileName,metaHastaYear:META.hastaYear,txs:serializeTx(),savedAt:Date.now()}));
+}
+
+function loadCartolaFromLocal(){
+  try{
+    const c=JSON.parse(localStorage.getItem('cartola-cache')||'null');
+    if(!c?.txs?.length) return false;
+    META.hastaYear=c.metaHastaYear||2026;
+    lastFileName=c.fileName||'Cartola guardada';
+    TX=deserializeTx(c.txs);
+    updateDropzoneUI();
+    return true;
+  }catch(e){return false;}
+}
+
+function loadLocal(){
+  try{
+    OVERRIDES=JSON.parse(localStorage.getItem('cartola-overrides')||'{}');
+    CUSTOM_CATS=JSON.parse(localStorage.getItem('cartola-custom-cats')||'[]');
+    const b=JSON.parse(localStorage.getItem('cartola-baseline')||'null');
+    if(b) BASELINE={...b,asOf:new Date(b.asOf)};
+    loadCartolaFromLocal();
+  }catch(e){}
+}
+
+function persistLocal(){
+  localStorage.setItem('cartola-overrides',JSON.stringify(OVERRIDES));
+  localStorage.setItem('cartola-custom-cats',JSON.stringify(CUSTOM_CATS));
+  localStorage.setItem('cartola-baseline',JSON.stringify({...BASELINE,asOf:BASELINE.asOf.toISOString()}));
+  persistCartola();
+}
+
+function setSync(t){document.getElementById('syncStatus').textContent=t;}
+
+function saveCloud(){
+  persistLocal();
+  if(!cloudEnabled||!currentUser) return;
+  clearTimeout(saveTimer);
+  setSync('Guardando…');
+  saveTimer=setTimeout(async()=>{
+    try{
+      await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
+        overrides:OVERRIDES, customCats:CUSTOM_CATS,
+        baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
+        transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      },{merge:true});
+      setSync('☁️ Sync');
+    }catch(e){setSync('Error sync');console.error(e);}
+  },600);
+}
+
+async function loadCloud(){
+  if(!currentUser) return;
+  loadLocal();
+  const localCount=Object.keys(OVERRIDES).length;
+  try{
+    const ref=db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos');
+    const snap=await ref.get();
+    if(snap.exists){
+      const d=snap.data();
+      const cloudCount=Object.keys(d.overrides||{}).length;
+      if(cloudCount>=localCount){
+        OVERRIDES=d.overrides||{};
+        CUSTOM_CATS=d.customCats||[];
+        if(d.baseline) BASELINE={...d.baseline,asOf:new Date(d.baseline.asOf)};
+        persistLocal();
+      }else if(localCount>0||CUSTOM_CATS.length>0){
+        await ref.set({
+          overrides:OVERRIDES,customCats:CUSTOM_CATS,
+          baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
+          transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+          updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      if(d.transactions?.length){
+        const localSaved=+(JSON.parse(localStorage.getItem('cartola-cache')||'{}').savedAt||0);
+        const cloudSaved=d.updatedAt?.toMillis?.()||0;
+        if(d.transactions.length>=TX.length||cloudSaved>=localSaved){
+          META.hastaYear=d.metaHastaYear||META.hastaYear;
+          lastFileName=d.fileName||lastFileName;
+          TX=deserializeTx(d.transactions);
+          persistCartola();
+        }
+      }
+    }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
+      await ref.set({
+        overrides:OVERRIDES,customCats:CUSTOM_CATS,
+        baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
+        transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear
+      });
+    }
+    setSync('☁️ Sync');
+    updateDropzoneUI();
+    if(TX.length) render();
+  }catch(e){setSync('Sin conexión');console.error(e);}
+}
+
+function parseMonto(v){
+  if(v==null||v==='') return 0;
+  if(typeof v==='number') return v;
+  const s=String(v).trim(), neg=s.includes('-');
+  return (neg?-1:1)*(parseInt(s.replace(/[^0-9]/g,''),10)||0);
+}
+
+function parseFecha(v){
+  if(v instanceof Date&&!isNaN(v)) return v;
+  const m=String(v).trim().match(/(\d{1,2})[\/\-.](\d{1,2})/);
+  return m?new Date(META.hastaYear,+m[2]-1,+m[1]):null;
+}
+
+function simulate(allTx){
+  const s={cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo};
+  for(const t of allTx.filter(t=>t.date>=BASELINE.asOf).sort((a,b)=>a.date-b.date)){
+    const a=t.amount, d=normText(t.desc);
+    if(a>0&&(d.includes('traspaso con la cuenta')||d.includes('traspaso internet desde l'))){s.cc+=a;s.lineaDisp=Math.max(0,s.lineaDisp-a);continue;}
+    if(a<0&&(d.includes('amortizacion')||d.includes('impuesto sobregiro')||d.includes('uso lca'))){s.cc+=a;s.lineaDisp=Math.min(s.cupo,s.lineaDisp+Math.abs(a));continue;}
+    s.cc+=a;
+    if(s.cc<0){const f=Math.abs(s.cc),x=Math.min(f,s.lineaDisp);s.lineaDisp-=x;s.cc+=x;}
+  }
+  return s;
+}
+
+function showView(n){
+  currentView=n;
+  ['inicio','graficos','movimientos','categoria'].forEach(v=>{
+    document.getElementById('view-'+v).classList.toggle('hidden',v!==n);
+  });
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.toggle('tab-active',b.dataset.view===n);
+    b.classList.toggle('text-white/40',b.dataset.view!==n);
+  });
+}
+
+function openCategoryDetail(catName){
+  viewBeforeCategory=currentView==='categoria'?'graficos':currentView;
+  const items=getVisibleTx().filter(t=>t.cat.name===catName);
+  const total=items.reduce((a,t)=>a+Math.abs(t.amount),0);
+  document.getElementById('catDetailName').textContent=catName;
+  document.getElementById('catDetailName').style.color=catColor(catName);
+  document.getElementById('catDetailTotal').textContent=fmt(total);
+  document.getElementById('catDetailCount').textContent=items.length+' movimiento'+(items.length!==1?'s':'');
+  items.sort((a,b)=>b.date-a.date);
+  document.getElementById('catDetailList').innerHTML=items.map(t=>`
+    <li class="rounded-2xl bg-panel border border-line px-4 py-3">
+      <div class="flex justify-between gap-3 mb-1">
+        <span class="text-[11px] text-white/35">${fmtFecha(t.date)}</span>
+        <span class="num font-semibold text-sm ${t.amount>0?'text-ingreso':'text-gasto'}">${t.amount>0?'+':''}${fmt(t.amount)}</span>
+      </div>
+      <p class="desc-full font-medium text-sm">${t.desc}</p>
+      <button data-key="${txKey(t)}" class="cat-btn mt-2 text-xs border border-line rounded-full px-3 py-1 text-white/50">Cambiar</button>
+    </li>`).join('')||'<li class="text-sm text-white/40 text-center py-6">Sin movimientos</li>';
+  showView('categoria');
+}
+
+function openCatModal(t){
+  pendingCatKey=txKey(t);
+  document.getElementById('catModalDesc').textContent=t.desc;
+  document.getElementById('catModalDate').textContent=fmtFecha(t.date);
+  document.getElementById('catModalOptions').innerHTML=getAssignable().map(c=>`
+    <button data-cat="${c.name}" class="rounded-xl border px-3 py-2 text-left text-sm active:bg-panel2 ${c.name===t.cat.name?'border-ingreso bg-ingreso/10':'border-line'}">
+      <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${c.color}"></span>${c.name}
+    </button>`).join('');
+  document.getElementById('catModal').classList.remove('hidden');
+}
+
+function render(){
+  const base=getVisibleTx();
+  const ops=getOperationalTx();
+  BAL=simulate(TX);
+  document.getElementById('balDispo').textContent=fmt(BAL.cc+BAL.lineaDisp);
+  document.getElementById('balCC').textContent=fmt(BAL.cc);
+  document.getElementById('balLinea').textContent=fmt(BAL.lineaDisp);
+  document.getElementById('balLineaSub').textContent=`Base ${BASELINE.asOf.toLocaleDateString('es-CL')} · Usado ${fmt(BAL.cupo-BAL.lineaDisp)} de ${fmt(BAL.cupo)}`;
+  document.getElementById('totEntradas').textContent=fmt(ops.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0));
+  document.getElementById('totGastos').textContent=fmt(ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0));
+  document.getElementById('summary').classList.remove('hidden');
+  document.getElementById('emptyHint').classList.add('hidden');
+  document.getElementById('internalToggle').classList.toggle('hidden',!TX.filter(t=>t.cat.internal).length);
+  document.getElementById('noChart').classList.add('hidden');
+  renderLista(base);
+  renderGastos(ops);
+}
+
+function renderLista(base){
+  let d=[...base];
+  if(filter==='in') d=d.filter(t=>t.amount>0);
+  if(filter==='out') d=d.filter(t=>t.amount<0);
+  if(filter==='otros') d=d.filter(t=>t.cat.name==='Otros Gastos'||isNeutralCat(t.cat));
+  d.sort((a,b)=>b.date-a.date);
+  document.getElementById('txList').innerHTML=d.map(t=>`
+    <li class="rounded-2xl bg-panel border border-line px-4 py-3">
+      <div class="flex justify-between gap-3 mb-2">
+        <span class="text-[11px] text-white/35">${fmtFecha(t.date)}</span>
+        <span class="num font-semibold text-sm ${t.amount>0?'text-ingreso':'text-gasto'}">${t.amount>0?'+':''}${fmt(t.amount)}</span>
+      </div>
+      <p class="desc-full font-medium text-sm">${t.desc}</p>
+      <div class="flex justify-between items-center mt-2">
+        <span class="text-xs" style="color:${t.cat.color}">${t.cat.name}</span>
+        <button data-key="${txKey(t)}" class="cat-btn text-xs border border-line rounded-full px-3 py-1 text-white/50">Cambiar</button>
+      </div>
+    </li>`).join('');
+}
+
+function renderGastos(base){
+  const g={};
+  base.filter(t=>t.amount<0).forEach(t=>{g[t.cat.name]=(g[t.cat.name]||0)+Math.abs(t.amount);});
+  const ent=Object.entries(g).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('chartWrap').classList.toggle('hidden',!ent.length);
+  if(chart) chart.destroy();
+  if(ent.length){
+    chart=new Chart(document.getElementById('pie'),{
+      type:'doughnut',
+      data:{labels:ent.map(e=>e[0]),datasets:[{data:ent.map(e=>e[1]),backgroundColor:ent.map(e=>catColor(e[0]))}]},
+      options:{cutout:'65%',plugins:{legend:{display:false}}}
+    });
+    document.getElementById('legend').innerHTML=ent.map(([k,v])=>`
+      <button type="button" data-cat="${k}" class="cat-link w-full flex justify-between items-center text-xs rounded-xl px-2 py-2.5 active:bg-panel2 text-left">
+        <span class="flex items-center gap-2 min-w-0">
+          <span class="w-2 h-2 rounded-full shrink-0" style="background:${catColor(k)}"></span>
+          <span>${k}</span>
+        </span>
+        <span class="num text-white/60 shrink-0 ml-2">${fmt(v)} ›</span>
+      </button>`).join('');
+  }else{
+    document.getElementById('legend').innerHTML='';
+  }
+}
+
+function procesar(rows){
+  const h=rows.findIndex(r=>String(r[0]||'').toUpperCase().startsWith('FECHA'));
+  if(h<0){alert('No se halló la tabla de movimientos');return;}
+  for(let i=0;i<h;i++)for(let j=0;j<rows[i].length;j++)
+    if(normText(rows[i][j])==='hasta'){const m=String(rows[i][j+1]||'').match(/(\d{4})/);if(m)META.hastaYear=+m[1];}
+  TX=[];
+  for(let i=h+1;i<rows.length;i++){
+    const r=rows[i]; if(!r||r.length<5) continue;
+    const date=parseFecha(r[0]), desc=String(r[2]||'').trim();
+    const amt=parseMonto(r[5])-parseMonto(r[4]);
+    if(date&&desc&&amt!==0) TX.push({date,desc,amount:amt,cat:categorizar(desc)});
+  }
+  detectPassthroughPairs();
+  persistCartola();
+  saveCloud();
+  updateDropzoneUI();
+  render();
+}
+
+// ── Eventos ──
+document.getElementById('fileInput').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  lastFileName=f.name;
+  if(!currentUser) document.getElementById('fileLabel').textContent=f.name;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:'array'});
+    procesar(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}));
+  };
+  reader.readAsArrayBuffer(f);
+  e.target.value='';
+});
+
+document.getElementById('legend').addEventListener('click',e=>{
+  const btn=e.target.closest('.cat-link');
+  if(btn&&btn.dataset.cat) openCategoryDetail(btn.dataset.cat);
+});
+
+document.getElementById('txList').addEventListener('click',e=>{
+  const btn=e.target.closest('.cat-btn');
+  if(!btn) return;
+  const t=TX.find(x=>txKey(x)===btn.dataset.key);
+  if(t) openCatModal({...t,cat:getCat(t)});
+});
+
+document.getElementById('catDetailList').addEventListener('click',e=>{
+  const btn=e.target.closest('.cat-btn');
+  if(!btn) return;
+  const t=TX.find(x=>txKey(x)===btn.dataset.key);
+  if(t) openCatModal({...t,cat:getCat(t)});
+});
+
+document.getElementById('catBackBtn').addEventListener('click',()=>showView(viewBeforeCategory));
+document.getElementById('catModalCancel').addEventListener('click',()=>document.getElementById('catModal').classList.add('hidden'));
+document.getElementById('catModalAuto').addEventListener('click',()=>{
+  if(pendingCatKey){delete OVERRIDES[pendingCatKey];saveCloud();document.getElementById('catModal').classList.add('hidden');render();}
+});
+document.getElementById('catModalOptions').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-cat]');
+  if(!btn||!pendingCatKey) return;
+  OVERRIDES[pendingCatKey]=btn.dataset.cat;
+  saveCloud();
+  document.getElementById('catModal').classList.add('hidden');
+  render();
+});
+
+document.getElementById('addCatBtn').addEventListener('click',()=>{
+  document.getElementById('newCatName').value='';
+  document.getElementById('newCatModal').classList.remove('hidden');
+});
+document.getElementById('newCatCancel').addEventListener('click',()=>document.getElementById('newCatModal').classList.add('hidden'));
+document.getElementById('newCatSave').addEventListener('click',()=>{
+  const n=document.getElementById('newCatName').value.trim();
+  if(!n||getAssignable().some(c=>c.name.toLowerCase()===n.toLowerCase())) return alert('Nombre inválido o duplicado');
+  CUSTOM_CATS.push({name:n,color:COLOR_POOL[CUSTOM_CATS.length%COLOR_POOL.length]});
+  saveCloud();
+  document.getElementById('newCatModal').classList.add('hidden');
+  render();
+});
+
+document.getElementById('internalToggle').addEventListener('click',()=>{
+  includeInternal=!includeInternal;
+  document.getElementById('knob').classList.toggle('bg-ingreso',includeInternal);
+  document.getElementById('knobDot').style.transform=includeInternal?'translateX(20px)':'translateX(0)';
+  if(TX.length) render();
+});
+
+document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+document.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>{
+  filter=b.dataset.filter;
+  document.querySelectorAll('.filter-btn').forEach(x=>{
+    x.classList.toggle('bg-panel2',x.dataset.filter===filter);
+    x.classList.toggle('text-white/50',x.dataset.filter!==filter);
+  });
+  renderLista(getVisibleTx());
+}));
+
+document.getElementById('googleBtn').addEventListener('click',()=>{
+  auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+});
+document.getElementById('authSubmit').addEventListener('click',async()=>{
+  try{
+    await auth.signInWithEmailAndPassword(
+      document.getElementById('authEmail').value.trim(),
+      document.getElementById('authPass').value
+    );
+    document.getElementById('authError').classList.add('hidden');
+  }catch(e){
+    document.getElementById('authError').textContent=e.message;
+    document.getElementById('authError').classList.remove('hidden');
+  }
+});
+document.getElementById('authLocalBtn').addEventListener('click',()=>{
+  localOnly=true;
+  document.getElementById('authModal').classList.add('hidden');
+  loadLocal();
+  setSync('Solo local');
+  if(TX.length) render();
+});
+document.getElementById('logoutBtn').addEventListener('click',()=>auth.signOut());
+
+auth.getRedirectResult().catch(()=>{});
+auth.onAuthStateChanged(async user=>{
+  if(user){
+    currentUser=user; cloudEnabled=true; localOnly=false;
+    document.getElementById('authModal').classList.add('hidden');
+    document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('fileLabel').textContent=user.email||'Conectado';
+    await loadCloud();
+  }else if(!localOnly){
+    document.getElementById('authModal').classList.remove('hidden');
+    document.getElementById('logoutBtn').classList.add('hidden');
+  }
+});
+
+loadLocal();
+if(TX.length){
+  if(!currentUser) document.getElementById('fileLabel').textContent=lastFileName;
+  render();
+}
+showView('inicio');
+</script>
+</body>
+</html>
