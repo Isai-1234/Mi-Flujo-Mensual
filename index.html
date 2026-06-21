@@ -384,6 +384,22 @@ function renderPeriodBar(){
   const ops=getOperationalTxForPeriod(selectedPeriod);
   document.getElementById('periodSub').textContent=`${ops.length} movimiento${ops.length!==1?'s':''} contables`;
 }
+function getPeriodSalaryNote(p){
+  const pk=periodKey({year:p.year,month:p.month});
+  const all=getAllOperationalTx();
+  const out=all.filter(t=>t.shifted&&t.amount>0&&periodKey(t.bank)===pk);
+  const inn=all.filter(t=>t.shifted&&t.amount>0&&t.periodKey===pk);
+  const parts=[];
+  if(out.length){
+    const tot=out.reduce((a,t)=>a+t.amount,0);
+    parts.push(`Sueldo fin de mes (${fmt(tot)}) contado en ${MESES[out[0].acct.month].slice(0,3)}`);
+  }
+  if(inn.length){
+    const tot=inn.reduce((a,t)=>a+t.amount,0);
+    parts.push(`Incluye sueldo de ${MESES[inn[0].bank.month].slice(0,3)} (${fmt(tot)})`);
+  }
+  return parts.join(' · ');
+}
 function renderHistorial(){
   const periods=getAvailablePeriods();
   const box=document.getElementById('yearGroups');
@@ -395,19 +411,23 @@ function renderHistorial(){
     <div>
       <p class="text-xs uppercase tracking-wide text-white/35 mb-2">${y}</p>
       <div class="space-y-2">
-        ${byYear[y].map(p=>`
+        ${byYear[y].map(p=>{
+          const salNote=getPeriodSalaryNote(p);
+          return `
           <button type="button" data-period="${p.key}" class="hist-btn w-full rounded-2xl bg-panel border ${selectedPeriod&&p.key===periodKey(selectedPeriod)?'border-ingreso/50':'border-line'} px-4 py-3 text-left active:bg-panel2">
             <div class="flex justify-between gap-3 items-start">
-              <div>
+              <div class="min-w-0">
                 <p class="font-medium capitalize">${MESES[p.month]}</p>
                 <p class="text-[11px] text-white/35 mt-0.5">${p.count} movimiento${p.count!==1?'s':''}</p>
+                ${salNote?`<p class="text-[10px] text-amber-400/85 mt-1 leading-snug">${salNote}</p>`:''}
               </div>
-              <div class="text-right">
+              <div class="text-right shrink-0">
                 <p class="num text-sm font-semibold ${p.neto>=0?'text-ingreso':'text-gasto'}">${fmt(p.neto)}</p>
-                <p class="text-[10px] text-white/30 mt-0.5">${fmt(p.entradas)} / ${fmt(p.gastos)}</p>
+                <p class="text-[10px] text-white/30 mt-0.5">ganaste / gastaste</p>
+                <p class="text-[10px] text-white/30">${fmt(p.entradas)} / ${fmt(p.gastos)}</p>
               </div>
             </div>
-          </button>`).join('')}
+          </button>`;}).join('')}
       </div>
     </div>`).join('');
 }
