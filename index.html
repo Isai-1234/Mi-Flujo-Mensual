@@ -431,17 +431,20 @@ function renderHistorial(){
       <div class="space-y-2">
         ${byYear[y].map(p=>{
           const salNote=getPeriodShiftNote(p);
+          const bank=PERIOD_BANK[p.key];
+          const bankLine=bank?.saldoFinal!=null?`<p class="text-[10px] text-white/40 mt-1">CC cartola ${fmt(bank.saldoFinal)}</p>`:'';
           return `
           <button type="button" data-period="${p.key}" class="hist-btn w-full rounded-2xl bg-panel border ${selectedPeriod&&p.key===periodKey(selectedPeriod)?'border-ingreso/50':'border-line'} px-4 py-3 text-left active:bg-panel2">
             <div class="flex justify-between gap-3 items-start">
               <div class="min-w-0">
                 <p class="font-medium capitalize">${MESES[p.month]}</p>
                 <p class="text-[11px] text-white/35 mt-0.5">${p.count} movimiento${p.count!==1?'s':''}</p>
+                ${bankLine}
                 ${salNote?`<p class="text-[10px] text-amber-400/85 mt-1 leading-snug">${salNote}</p>`:''}
               </div>
               <div class="text-right shrink-0">
                 <p class="num text-sm font-semibold ${p.neto>=0?'text-ingreso':'text-gasto'}">${fmt(p.neto)}</p>
-                <p class="text-[10px] text-white/30 mt-0.5">ganaste / gastaste</p>
+                <p class="text-[10px] text-white/30 mt-0.5">operacional</p>
                 <p class="text-[10px] text-white/30">${fmt(p.entradas)} / ${fmt(p.gastos)}</p>
               </div>
             </div>
