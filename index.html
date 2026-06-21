@@ -106,7 +106,8 @@
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
-        <p class="text-[10px] text-white/30 mb-2">Orden cronológico del mes. Arrastra el saldo de meses anteriores; «Te quedó» arriba es solo este mes.</p>
+        <p class="text-[10px] text-white/30 mb-2">Saldo real de la cartola + movimientos del mes (sin traspasos internos LCA). «Te quedó» arriba es solo entradas − gastos operacionales.</p>
+        <p id="flowBankMeta" class="hidden text-[10px] text-white/40 mb-2"></p>
         <p id="flowNote" class="hidden text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2 mb-3"></p>
         <ul id="flowList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
       </div>
@@ -329,7 +330,7 @@ const DESC_RULES=[
   {cat:'Transferencias',kw:['altcom ingenieria','altcom','hidalgo vidal','molina escudero','millanguir','transf de terceros','transf a terceros','transferencia de','transferencia a']}
 ];
 
-let CUSTOM_CATS=[], CAT_RENAMES={}, OVERRIDES={}, PERIOD_OVERRIDES={}, MERCHANT_RULES=[], TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
+let CUSTOM_CATS=[], CAT_RENAMES={}, OVERRIDES={}, PERIOD_OVERRIDES={}, MERCHANT_RULES=[], PERIOD_BANK={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
 let chart=null, filter='all', includeInternal=false;
 let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null, modalLastCat=null, modalCurrentDesc='';
 let currentUser=null, cloudEnabled=false, localOnly=false, saveTimer=null;
@@ -664,7 +665,9 @@ function extractFromRows(rows){
     const amt=parseMonto(r[5])-parseMonto(r[4]);
     if(date&&desc&&amt!==0) txs.push({date,desc,amount:amt,cat:categorizar(desc)});
   }
-  return {txs,year};
+  const meta=parseCartolaMeta(rows,h);
+  const periodKeyCartola=inferCartolaPeriod(rows,h,txs,year);
+  return {txs,year,meta,periodKeyCartola};
 }
 
 function mergeTransactions(incoming){
@@ -714,6 +717,7 @@ function loadLocal(){
     PERIOD_OVERRIDES=JSON.parse(localStorage.getItem('cartola-period-overrides')||'{}');
     MERCHANT_RULES=JSON.parse(localStorage.getItem('cartola-merchant-rules')||'[]');
     CAT_RENAMES=JSON.parse(localStorage.getItem('cartola-cat-renames')||'{}');
+    PERIOD_BANK=JSON.parse(localStorage.getItem('cartola-period-bank')||'{}');
     CUSTOM_CATS=JSON.parse(localStorage.getItem('cartola-custom-cats')||'[]');
     const b=JSON.parse(localStorage.getItem('cartola-baseline')||'null');
     if(b) BASELINE={...b,asOf:new Date(b.asOf)};
@@ -728,6 +732,7 @@ function persistLocal(){
   localStorage.setItem('cartola-period-overrides',JSON.stringify(PERIOD_OVERRIDES));
   localStorage.setItem('cartola-merchant-rules',JSON.stringify(MERCHANT_RULES));
   localStorage.setItem('cartola-cat-renames',JSON.stringify(CAT_RENAMES));
+  localStorage.setItem('cartola-period-bank',JSON.stringify(PERIOD_BANK));
   localStorage.setItem('cartola-custom-cats',JSON.stringify(CUSTOM_CATS));
   localStorage.setItem('cartola-baseline',JSON.stringify({...BASELINE,asOf:BASELINE.asOf.toISOString()}));
   if(selectedPeriod) localStorage.setItem('cartola-selected-period',periodKey(selectedPeriod));
@@ -741,7 +746,7 @@ async function flushCloudNow(){
   clearTimeout(saveTimer);
   setSync('Guardando…');
   await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
-    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS, catRenames:CAT_RENAMES, merchantRules:MERCHANT_RULES,
+    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS, catRenames:CAT_RENAMES, merchantRules:MERCHANT_RULES, periodBank:PERIOD_BANK,
     baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
     transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
     selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -774,12 +779,13 @@ async function loadCloud(){
         CUSTOM_CATS=d.customCats||[];
         CAT_RENAMES=d.catRenames||CAT_RENAMES;
         MERCHANT_RULES=d.merchantRules||MERCHANT_RULES;
+        PERIOD_BANK=d.periodBank||PERIOD_BANK;
         if(d.baseline) BASELINE={...d.baseline,asOf:new Date(d.baseline.asOf)};
         if(d.selectedPeriod) selectedPeriod=parsePeriodKey(d.selectedPeriod);
         persistLocal();
       }else if(localCount>0||CUSTOM_CATS.length>0){
         await ref.set({
-          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,
+          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,periodBank:PERIOD_BANK,
           baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
           transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
           selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -804,7 +810,7 @@ async function loadCloud(){
       }
     }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
       await ref.set({
-        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,
+        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,periodBank:PERIOD_BANK,
         baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
         transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
         selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null
@@ -943,6 +949,64 @@ function catBreakdown(ops,positive){
   return Object.entries(g).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ');
 }
 
+function previousPeriodKey(pk){
+  const p=parsePeriodKey(pk);
+  const d=new Date(p.year,p.month-1,1);
+  return periodKey({year:d.getFullYear(),month:d.getMonth()});
+}
+function parseCartolaMeta(rows,hRow){
+  const meta={};
+  const labels={saldoInicial:['saldo inicial'],saldoFinal:['saldo final'],lineaDisp:['saldo disponible'],cupo:['cupo aprobado'],lineaUsada:['monto utilizado']};
+  for(let i=0;i<hRow;i++){
+    const r=rows[i]||[];
+    for(let j=0;j<r.length;j++){
+      const cell=normText(r[j]);
+      for(const [key,pats] of Object.entries(labels)){
+        if(pats.some(p=>cell.includes(p))){
+          for(let k=j+1;k<Math.min(j+4,r.length);k++){
+            const v=parseMontoAbs(r[k]);
+            if(v>0){meta[key]=v;break;}
+          }
+        }
+      }
+    }
+  }
+  return meta;
+}
+function inferCartolaPeriod(rows,hRow,txs,year){
+  for(let i=0;i<hRow;i++){
+    for(let j=0;j<(rows[i]?.length||0);j++){
+      if(normText(rows[i][j])==='hasta'){
+        const d=parseFecha(rows[i][j+1],year);
+        if(d) return periodKey({year:d.getFullYear(),month:d.getMonth()});
+      }
+    }
+  }
+  if(txs.length){
+    const t=txs.reduce((a,b)=>a.date>b.date?a:b);
+    return periodKey({year:t.date.getFullYear(),month:t.date.getMonth()});
+  }
+  return null;
+}
+function parseMontoAbs(v){
+  if(v==null||v==='') return 0;
+  if(typeof v==='number') return Math.abs(v);
+  return Math.abs(parseInt(String(v).replace(/[^0-9]/g,''),10)||0);
+}
+function getFlowOpening(p){
+  if(!p) return {amount:0,label:'Inicio del mes',hint:''};
+  const pk=periodKey(p);
+  const bank=PERIOD_BANK[pk];
+  if(bank?.saldoInicial!=null)
+    return {amount:bank.saldoInicial,label:'Saldo inicial (cartola banco)',hint:'Dinero real en cuenta corriente al abrir el mes'};
+  const prev=previousPeriodKey(pk);
+  if(PERIOD_BANK[prev]?.saldoFinal!=null)
+    return {amount:PERIOD_BANK[prev].saldoFinal,label:'Saldo inicial (cierre mes anterior)',hint:'Saldo final de la cartola del mes previo'};
+  const calc=periodNetBefore(p);
+  if(calc) return {amount:calc,label:'Arrastre operacional',hint:'Suma ingresos − gastos de meses anteriores (sin saldo banco). Sube cartolas para usar saldo real.'};
+  return {amount:0,label:'Inicio del mes',hint:''};
+}
+
 function periodNetBefore(p){
   if(!p) return 0;
   const pk=periodKey(p);
@@ -952,9 +1016,18 @@ function periodNetBefore(p){
 function renderFlow(ops){
   const wrap=document.getElementById('flowWrap');
   const noteEl=document.getElementById('flowNote');
+  const bankMetaEl=document.getElementById('flowBankMeta');
   if(!ops.length&&!selectedPeriod){wrap.classList.add('hidden');return;}
   wrap.classList.remove('hidden');
   const pk=selectedPeriod?periodKey(selectedPeriod):'';
+  const bank=pk?PERIOD_BANK[pk]:null;
+  if(bank?.saldoInicial!=null&&bank?.saldoFinal!=null){
+    bankMetaEl.textContent=`Cartola banco: inicial ${fmt(bank.saldoInicial)} → final ${fmt(bank.saldoFinal)}${bank.lineaDisp!=null?` · Línea disp. ${fmt(bank.lineaDisp)}`:''}`;
+    bankMetaEl.classList.remove('hidden');
+  }else if(bank?.saldoInicial!=null){
+    bankMetaEl.textContent=`Cartola banco: saldo inicial ${fmt(bank.saldoInicial)}`;
+    bankMetaEl.classList.remove('hidden');
+  }else{bankMetaEl.classList.add('hidden');}
   const shiftedOut=pk?getAllOperationalTx().filter(t=>t.shifted&&periodKey(t.bank)===pk&&t.periodKey!==pk):[];
   const shiftedIn=ops.filter(t=>t.shifted);
   let note='';
@@ -968,14 +1041,11 @@ function renderFlow(ops){
   }
   if(note){noteEl.textContent=note;noteEl.classList.remove('hidden');}else{noteEl.classList.add('hidden');}
   const sorted=[...ops].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
-  const opening=selectedPeriod?periodNetBefore(selectedPeriod):0;
-  let bal=opening;
+  const opening=getFlowOpening(selectedPeriod);
+  let bal=opening.amount;
   const rows=[];
-  if(opening){
-    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Arrastre meses anteriores</span><span class="num ${opening>=0?'text-ingreso':'text-gasto'}">${fmt(opening)}</span></li>`);
-  }else{
-    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Inicio del mes</span><span class="num">$0</span></li>`);
-  }
+  rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-1 border-b border-line/40"><span>${opening.label}</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  if(opening.hint) rows.push(`<li class="text-[9px] text-white/25 pb-2 border-b border-line/40">${opening.hint}</li>`);
   sorted.forEach(t=>{
     bal+=t.amount;
     const short=t.desc.length>36?t.desc.slice(0,36)+'…':t.desc;
@@ -989,11 +1059,12 @@ function renderFlow(ops){
     </li>`);
   });
   const monthNet=ops.reduce((a,t)=>a+t.amount,0);
-  if(opening){
-    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (con arrastre)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
-    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pt-1"><span>Solo este mes (= Te quedó)</span><span class="num ${monthNet>=0?'text-ingreso':'text-gasto'}">${fmt(monthNet)}</span></li>`);
-  }else{
-    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (= Te quedó)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo tras movimientos listados</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  rows.push(`<li class="flex justify-between text-[10px] text-white/35 pt-1"><span>Este mes operacional (= Te quedó)</span><span class="num ${monthNet>=0?'text-ingreso':'text-gasto'}">${fmt(monthNet)}</span></li>`);
+  if(bank?.saldoFinal!=null){
+    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 border-t border-line/40 mt-1"><span class="text-white/50">Saldo real CC (cartola)</span><span class="num text-ingreso">${fmt(bank.saldoFinal)}</span></li>`);
+    if(Math.abs(bal-bank.saldoFinal)>1000)
+      rows.push(`<li class="text-[9px] text-white/30 pt-1">La diferencia con la cartola son traspasos LCA, amortizaciones e impuestos internos del banco (no listados arriba).</li>`);
   }
   document.getElementById('flowList').innerHTML=rows.join('');
 }
@@ -1078,6 +1149,8 @@ function procesar(rows){
   const had=TX.length;
   setProcessing(true,'Uniendo movimientos…');
   const added=mergeTransactions(ex.txs);
+  if(ex.periodKeyCartola&&Object.keys(ex.meta).length)
+    PERIOD_BANK[ex.periodKeyCartola]={...PERIOD_BANK[ex.periodKeyCartola],...ex.meta};
   localStorage.removeItem('cartola-cleared');
   applyAutoCategories();
   detectPassthroughPairs();
@@ -1102,10 +1175,11 @@ function procesar(rows){
 
 function clearAllCartola(){
   if(!confirm('¿Borrar todo el historial de cartolas, categorías manuales y meses asignados?')) return;
-  TX=[]; OVERRIDES={}; PERIOD_OVERRIDES={}; CUSTOM_CATS=[]; lastFileName=''; selectedPeriod=null;
+  TX=[]; OVERRIDES={}; PERIOD_OVERRIDES={}; PERIOD_BANK={}; CUSTOM_CATS=[]; lastFileName=''; selectedPeriod=null;
   localStorage.removeItem('cartola-cache');
   localStorage.removeItem('cartola-overrides');
   localStorage.removeItem('cartola-period-overrides');
+  localStorage.removeItem('cartola-period-bank');
   localStorage.removeItem('cartola-custom-cats');
   localStorage.removeItem('cartola-selected-period');
   localStorage.setItem('cartola-cleared',Date.now().toString());
