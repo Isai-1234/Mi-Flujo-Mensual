@@ -106,7 +106,7 @@
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
-        <p class="text-[10px] text-white/30 mb-2">Ingresos y gastos en orden de fecha. El saldo final debe coincidir con «Te quedó».</p>
+        <p class="text-[10px] text-white/30 mb-2">Orden cronológico del mes. Arrastra el saldo de meses anteriores; «Te quedó» arriba es solo este mes.</p>
         <p id="flowNote" class="hidden text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2 mb-3"></p>
         <ul id="flowList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
       </div>
@@ -943,10 +943,16 @@ function catBreakdown(ops,positive){
   return Object.entries(g).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ');
 }
 
+function periodNetBefore(p){
+  if(!p) return 0;
+  const pk=periodKey(p);
+  return getAllOperationalTx().filter(t=>t.periodKey<pk).reduce((a,t)=>a+t.amount,0);
+}
+
 function renderFlow(ops){
   const wrap=document.getElementById('flowWrap');
   const noteEl=document.getElementById('flowNote');
-  if(!ops.length){wrap.classList.add('hidden');return;}
+  if(!ops.length&&!selectedPeriod){wrap.classList.add('hidden');return;}
   wrap.classList.remove('hidden');
   const pk=selectedPeriod?periodKey(selectedPeriod):'';
   const shiftedOut=pk?getAllOperationalTx().filter(t=>t.shifted&&periodKey(t.bank)===pk&&t.periodKey!==pk):[];
@@ -962,8 +968,14 @@ function renderFlow(ops){
   }
   if(note){noteEl.textContent=note;noteEl.classList.remove('hidden');}else{noteEl.classList.add('hidden');}
   const sorted=[...ops].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
-  let bal=0;
-  const rows=[`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Inicio del mes</span><span class="num">$0</span></li>`];
+  const opening=selectedPeriod?periodNetBefore(selectedPeriod):0;
+  let bal=opening;
+  const rows=[];
+  if(opening){
+    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Arrastre meses anteriores</span><span class="num ${opening>=0?'text-ingreso':'text-gasto'}">${fmt(opening)}</span></li>`);
+  }else{
+    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Inicio del mes</span><span class="num">$0</span></li>`);
+  }
   sorted.forEach(t=>{
     bal+=t.amount;
     const short=t.desc.length>36?t.desc.slice(0,36)+'…':t.desc;
@@ -976,7 +988,13 @@ function renderFlow(ops){
       <span class="num font-semibold shrink-0 pt-0.5 ${bal>=0?'text-white':'text-gasto'}">${fmt(bal)}</span>
     </li>`);
   });
-  rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (= Te quedó)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  const monthNet=ops.reduce((a,t)=>a+t.amount,0);
+  if(opening){
+    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (con arrastre)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+    rows.push(`<li class="flex justify-between text-[10px] text-white/35 pt-1"><span>Solo este mes (= Te quedó)</span><span class="num ${monthNet>=0?'text-ingreso':'text-gasto'}">${fmt(monthNet)}</span></li>`);
+  }else{
+    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (= Te quedó)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  }
   document.getElementById('flowList').innerHTML=rows.join('');
 }
 
