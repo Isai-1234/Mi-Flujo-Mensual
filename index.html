@@ -49,6 +49,15 @@
 
 <main class="pb-28 max-w-md mx-auto">
 
+  <div id="periodBar" class="hidden mx-5 mt-4 flex items-center justify-between gap-2 rounded-2xl bg-panel border border-line px-3 py-2">
+    <button id="periodPrev" type="button" class="shrink-0 h-9 w-9 rounded-xl border border-line text-white/60 active:bg-panel2">‹</button>
+    <button id="periodLabel" type="button" class="flex-1 min-w-0 text-center">
+      <p id="periodTitle" class="text-sm font-semibold capitalize truncate">—</p>
+      <p id="periodSub" class="text-[10px] text-white/35">Mes contable</p>
+    </button>
+    <button id="periodNext" type="button" class="shrink-0 h-9 w-9 rounded-xl border border-line text-white/60 active:bg-panel2">›</button>
+  </div>
+
   <section id="view-inicio" class="px-5 pt-5">
     <label id="dropzone" class="block rounded-3xl border-2 border-dashed border-line bg-panel/60 px-6 py-8 text-center cursor-pointer active:scale-[.99] transition">
       <div class="mx-auto mb-3 h-12 w-12 rounded-2xl bg-ingreso/15 flex items-center justify-center">
@@ -78,15 +87,19 @@
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3">
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Total Entradas</p>
+            <p class="text-[11px] text-white/40">Entradas del mes</p>
             <p id="totEntradas" class="num text-lg font-semibold text-ingreso">$0</p>
           </div>
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Total Gastos</p>
+            <p class="text-[11px] text-white/40">Gastos del mes</p>
             <p id="totGastos" class="num text-lg font-semibold text-gasto">$0</p>
           </div>
         </div>
-        <p class="text-[10px] text-white/30 mt-3">Entradas y gastos excluyen ruido bancario y dinero que solo pasó por la cuenta.</p>
+        <div class="mt-3 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
+          <span class="text-[11px] text-white/40">Balance del mes</span>
+          <span id="totNeto" class="num text-sm font-semibold">$0</span>
+        </div>
+        <p class="text-[10px] text-white/30 mt-3">Solo el sueldo del 29–31 se mueve solo al mes siguiente. Cualquier otro movimiento lo asignas tú en Cambiar.</p>
       </div>
       <button id="internalToggle" class="hidden w-full flex items-center justify-between gap-3 rounded-2xl bg-panel border border-line px-4 py-3 text-left active:bg-panel2">
         <span class="text-sm">Ver traspasos LCA e impuestos</span>
@@ -98,10 +111,20 @@
     <div id="emptyHint" class="mt-8 text-center text-sm text-white/35">Sube tu cartola Excel para ver saldos y gastos.</div>
   </section>
 
+  <section id="view-historial" class="hidden px-5 pt-5">
+    <h2 class="text-base font-semibold mb-1">Historial por mes</h2>
+    <p class="text-xs text-white/40 mb-4">Toca un mes para ver entradas, gastos y categorías. El sueldo del 29–31 entra solo al mes siguiente.</p>
+    <div id="yearGroups" class="space-y-5"></div>
+    <p id="noHistorial" class="hidden text-center text-sm text-white/40 mt-10">Carga una cartola para ver el historial mensual.</p>
+  </section>
+
   <section id="view-graficos" class="hidden px-5 pt-5">
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-base font-semibold">Gastos por categoría</h2>
-      <button id="addCatBtn" class="text-xs text-ingreso border border-ingreso/30 rounded-full px-3 py-1.5 active:bg-ingreso/10">+ Categoría</button>
+      <div class="flex gap-2">
+        <button id="editCatBtn" class="text-xs text-white/50 border border-line rounded-full px-3 py-1.5 active:bg-panel2">Editar</button>
+        <button id="addCatBtn" class="text-xs text-ingreso border border-ingreso/30 rounded-full px-3 py-1.5 active:bg-ingreso/10">+ Categoría</button>
+      </div>
     </div>
     <div id="chartWrap" class="rounded-3xl bg-panel border border-line p-5 mt-3">
       <div class="relative mx-auto" style="max-width:240px"><canvas id="pie"></canvas></div>
@@ -162,10 +185,33 @@
   <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8 max-h-[85vh] overflow-y-auto" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
     <p class="text-sm font-semibold mb-1">Cambiar categoría</p>
     <p id="catModalDesc" class="desc-full text-xs text-white/50 mb-1"></p>
-    <p id="catModalDate" class="text-xs text-white/30 mb-4"></p>
+    <p id="catModalDate" class="text-xs text-white/30 mb-1"></p>
+    <p id="catModalPeriod" class="text-xs text-white/45 mb-3"></p>
+    <div class="flex gap-2 mb-4">
+      <button id="catModalPeriodBank" type="button" class="flex-1 text-xs border border-line rounded-xl py-2 active:bg-panel2">Mes del banco</button>
+      <button id="catModalPeriodNext" type="button" class="flex-1 text-xs border border-line rounded-xl py-2 active:bg-panel2">Mes siguiente</button>
+    </div>
+    <div class="mb-4 rounded-xl bg-panel2 border border-line p-3">
+      <p class="text-xs text-white/40 mb-2">Asignar a otro mes contable</p>
+      <div class="flex gap-2 mb-2">
+        <select id="catModalMonth" class="flex-1 bg-panel border border-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-ingreso"></select>
+        <input id="catModalYear" type="number" min="2020" max="2035" class="w-24 bg-panel border border-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-ingreso" />
+      </div>
+      <button id="catModalPeriodCustom" type="button" class="w-full text-xs border border-ingreso/40 text-ingreso rounded-xl py-2 active:bg-ingreso/10">Asignar a este mes</button>
+    </div>
     <div id="catModalOptions" class="grid grid-cols-2 gap-2"></div>
     <button id="catModalAuto" class="w-full mt-3 text-xs text-white/40 py-2 border border-line rounded-xl active:bg-panel2">Volver a automático</button>
     <button id="catModalCancel" class="w-full mt-2 text-sm text-white/50 py-2">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal editar categorías -->
+<div id="editCatModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/70">
+  <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8 max-h-[85vh] overflow-y-auto" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
+    <p class="text-sm font-semibold mb-1">Editar categorías</p>
+    <p class="text-xs text-white/40 mb-4">Solo las categorías que creaste tú. Los movimientos asignados se actualizan solos.</p>
+    <ul id="editCatList" class="space-y-2"></ul>
+    <button id="editCatClose" class="w-full mt-4 text-sm text-white/50 py-2">Cerrar</button>
   </div>
 </div>
 
@@ -180,9 +226,10 @@
 </div>
 
 <nav class="fixed bottom-0 inset-x-0 z-30 bg-ink/95 backdrop-blur border-t border-line" style="padding-bottom:env(safe-area-inset-bottom)">
-  <div class="max-w-md mx-auto grid grid-cols-3">
+  <div class="max-w-md mx-auto grid grid-cols-4">
     <button data-view="inicio" class="nav-btn flex flex-col items-center gap-1 py-3 tab-active"><span class="text-[10px] font-medium">Inicio</span></button>
     <button data-view="graficos" class="nav-btn flex flex-col items-center gap-1 py-3 text-white/40"><span class="text-[10px] font-medium">Gastos</span></button>
+    <button data-view="historial" class="nav-btn flex flex-col items-center gap-1 py-3 text-white/40"><span class="text-[10px] font-medium">Historial</span></button>
     <button data-view="movimientos" class="nav-btn flex flex-col items-center gap-1 py-3 text-white/40"><span class="text-[10px] font-medium">Registros</span></button>
   </div>
 </nav>
@@ -229,12 +276,146 @@ const BASE_CATS = [
 ];
 const DEFAULT_CAT = {name:'Otros Gastos',color:'#71717a',internal:false,neutral:false,kw:[]};
 
-let CUSTOM_CATS=[], OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
+let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
 let chart=null, filter='all', includeInternal=false;
 let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null;
 let currentUser=null, cloudEnabled=false, localOnly=false, saveTimer=null;
+let selectedPeriod=null;
+
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const SUELDO_KW=['remuneracion','sueldo','liquidacion','fundacion','haberes'];
+
+function periodKey(p){return `${p.year}-${String(p.month+1).padStart(2,'0')}`;}
+function parsePeriodKey(k){const [y,m]=k.split('-');return {year:+y,month:+m-1};}
+function periodLabel(p){return `${MESES[p.month]} ${p.year}`;}
+function bankPeriod(t){return {year:t.date.getFullYear(),month:t.date.getMonth()};}
+function isLateSalary(t,cat){
+  if(t.amount<=0) return false;
+  const n=normText(t.desc);
+  const isSalary=cat.name==='Remuneraciones'||SUELDO_KW.some(k=>n.includes(k));
+  return isSalary&&t.date.getDate()>=29;
+}
+function defaultAccountingPeriod(t,cat){
+  if(isLateSalary(t,cat)){
+    const d=new Date(t.date.getFullYear(),t.date.getMonth()+1,1);
+    return {year:d.getFullYear(),month:d.getMonth()};
+  }
+  return bankPeriod(t);
+}
+function getAccountingPeriod(t){
+  const key=txKey(t), ov=PERIOD_OVERRIDES[key];
+  if(ov) return parsePeriodKey(ov);
+  return defaultAccountingPeriod(t,getCat(t));
+}
+function txInPeriod(t,p){const a=getAccountingPeriod(t);return a.year===p.year&&a.month===p.month;}
+function enrichTx(t){const cat=getCat(t),acct=getAccountingPeriod(t),bank=bankPeriod(t);return {...t,cat,acct,bank,periodKey:periodKey(acct),shifted:periodKey(acct)!==periodKey(bank)};}
+function getAllOperationalTx(){return TX.map(enrichTx).filter(t=>!isNeutralCat(t.cat)&&(!isInternalCat(t.cat)||includeInternal));}
+function getOperationalTxForPeriod(p){return getAllOperationalTx().filter(t=>txInPeriod(t,p));}
+function getAvailablePeriods(){
+  const map=new Map();
+  getAllOperationalTx().forEach(t=>{
+    const k=periodKey(t.acct);
+    if(!map.has(k)) map.set(k,{...t.acct,count:0,entradas:0,gastos:0});
+    const s=map.get(k); s.count++;
+    if(t.amount>0) s.entradas+=t.amount; else s.gastos+=Math.abs(t.amount);
+  });
+  return [...map.entries()].map(([k,v])=>({key:k,...v,neto:v.entradas-v.gastos})).sort((a,b)=>b.key.localeCompare(a.key));
+}
+function ensureSelectedPeriod(){
+  const periods=getAvailablePeriods();
+  if(!periods.length){selectedPeriod=null;return;}
+  if(selectedPeriod&&periods.some(p=>p.key===periodKey(selectedPeriod))) return;
+  selectedPeriod={year:periods[0].year,month:periods[0].month};
+}
+function shiftSelectedPeriod(delta){
+  const periods=getAvailablePeriods();
+  if(!periods.length) return;
+  ensureSelectedPeriod();
+  const keys=periods.map(p=>p.key).sort();
+  let idx=keys.indexOf(periodKey(selectedPeriod));
+  if(idx<0) idx=0;
+  idx=Math.max(0,Math.min(keys.length-1,idx+delta));
+  selectedPeriod=parsePeriodKey(keys[idx]);
+}
+function renderPeriodBar(){
+  const bar=document.getElementById('periodBar');
+  const show=TX.length>0&&selectedPeriod&&['inicio','graficos','movimientos'].includes(currentView);
+  if(!show){bar.classList.add('hidden');return;}
+  bar.classList.remove('hidden');
+  document.getElementById('periodTitle').textContent=periodLabel(selectedPeriod);
+  const ops=getOperationalTxForPeriod(selectedPeriod);
+  document.getElementById('periodSub').textContent=`${ops.length} movimiento${ops.length!==1?'s':''} contables`;
+}
+function renderHistorial(){
+  const periods=getAvailablePeriods();
+  const box=document.getElementById('yearGroups');
+  document.getElementById('noHistorial').classList.toggle('hidden',!!periods.length);
+  if(!periods.length){box.innerHTML='';return;}
+  const byYear={};
+  periods.forEach(p=>{(byYear[p.year]||(byYear[p.year]=[])).push(p);});
+  box.innerHTML=Object.keys(byYear).sort((a,b)=>+b-+a).map(y=>`
+    <div>
+      <p class="text-xs uppercase tracking-wide text-white/35 mb-2">${y}</p>
+      <div class="space-y-2">
+        ${byYear[y].map(p=>`
+          <button type="button" data-period="${p.key}" class="hist-btn w-full rounded-2xl bg-panel border ${selectedPeriod&&p.key===periodKey(selectedPeriod)?'border-ingreso/50':'border-line'} px-4 py-3 text-left active:bg-panel2">
+            <div class="flex justify-between gap-3 items-start">
+              <div>
+                <p class="font-medium capitalize">${MESES[p.month]}</p>
+                <p class="text-[11px] text-white/35 mt-0.5">${p.count} movimiento${p.count!==1?'s':''}</p>
+              </div>
+              <div class="text-right">
+                <p class="num text-sm font-semibold ${p.neto>=0?'text-ingreso':'text-gasto'}">${fmt(p.neto)}</p>
+                <p class="text-[10px] text-white/30 mt-0.5">${fmt(p.entradas)} / ${fmt(p.gastos)}</p>
+              </div>
+            </div>
+          </button>`).join('')}
+      </div>
+    </div>`).join('');
+}
 
 function normText(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[°º]/g,'').trim();}
+
+function renameCustomCat(oldName,newName){
+  const n=newName.trim();
+  if(!n||n===oldName) return 'Nombre inválido';
+  if(!CUSTOM_CATS.some(c=>c.name===oldName)) return 'Categoría no encontrada';
+  if(getAssignable().some(c=>c.name.toLowerCase()===n.toLowerCase())) return 'Ya existe una categoría con ese nombre';
+  const cat=CUSTOM_CATS.find(c=>c.name===oldName);
+  cat.name=n;
+  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===oldName) OVERRIDES[k]=n;});
+  return null;
+}
+
+function populateMonthSelect(sel,selectedMonth){
+  sel.innerHTML=MESES.map((m,i)=>`<option value="${i}" ${i===selectedMonth?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('');
+}
+
+function renderEditCatList(){
+  const list=document.getElementById('editCatList');
+  if(!CUSTOM_CATS.length){
+    list.innerHTML='<li class="text-sm text-white/40 text-center py-6">No tienes categorías personalizadas aún</li>';
+    return;
+  }
+  list.innerHTML=CUSTOM_CATS.map(c=>`
+    <li class="rounded-2xl bg-panel2 border border-line p-3">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="w-2 h-2 rounded-full shrink-0" style="background:${c.color}"></span>
+        <input data-old="${c.name}" type="text" value="${c.name}" maxlength="40" class="edit-cat-input flex-1 bg-panel border border-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-ingreso" />
+      </div>
+      <div class="flex gap-2">
+        <button data-old="${c.name}" type="button" class="edit-cat-save flex-1 text-xs bg-ingreso text-black font-semibold rounded-xl py-2">Guardar</button>
+        <button data-old="${c.name}" type="button" class="edit-cat-del text-xs border border-gasto/40 text-gasto rounded-xl px-3 py-2">Eliminar</button>
+      </div>
+    </li>`).join('');
+}
+
+function deleteCustomCat(name){
+  if(!confirm(`¿Eliminar "${name}"? Los movimientos quedarán sin esa categoría.`)) return false;
+  CUSTOM_CATS=CUSTOM_CATS.filter(c=>c.name!==name);
+  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===name) delete OVERRIDES[k];});
+  return true;
+}
 function getAssignable(){return [DEFAULT_CAT,...BASE_CATS.filter(c=>!c.internal),...CUSTOM_CATS.map(c=>({...c,internal:false,neutral:false}))];}
 function findCat(n){
   if(n===DEFAULT_CAT.name) return DEFAULT_CAT;
@@ -271,8 +452,9 @@ function getVisibleTx(){return TX.filter(t=>{
   const c=getCat(t);
   if(isInternalCat(c)&&!includeInternal) return false;
   if(isNeutralCat(c)&&filter!=='otros') return false;
+  if(selectedPeriod&&!txInPeriod(t,selectedPeriod)) return false;
   return true;
-}).map(t=>({...t,cat:getCat(t)}));}
+}).map(t=>enrichTx(t));}
 function getOperationalTx(){return getVisibleTx().filter(t=>!isNeutralCat(t.cat));}
 
 function serializeTx(){return TX.map(t=>({date:t.date.toISOString(),desc:t.desc,amount:t.amount}));}
@@ -308,17 +490,22 @@ function loadCartolaFromLocal(){
 function loadLocal(){
   try{
     OVERRIDES=JSON.parse(localStorage.getItem('cartola-overrides')||'{}');
+    PERIOD_OVERRIDES=JSON.parse(localStorage.getItem('cartola-period-overrides')||'{}');
     CUSTOM_CATS=JSON.parse(localStorage.getItem('cartola-custom-cats')||'[]');
     const b=JSON.parse(localStorage.getItem('cartola-baseline')||'null');
     if(b) BASELINE={...b,asOf:new Date(b.asOf)};
+    const sp=localStorage.getItem('cartola-selected-period');
+    if(sp) selectedPeriod=parsePeriodKey(sp);
     loadCartolaFromLocal();
   }catch(e){}
 }
 
 function persistLocal(){
   localStorage.setItem('cartola-overrides',JSON.stringify(OVERRIDES));
+  localStorage.setItem('cartola-period-overrides',JSON.stringify(PERIOD_OVERRIDES));
   localStorage.setItem('cartola-custom-cats',JSON.stringify(CUSTOM_CATS));
   localStorage.setItem('cartola-baseline',JSON.stringify({...BASELINE,asOf:BASELINE.asOf.toISOString()}));
+  if(selectedPeriod) localStorage.setItem('cartola-selected-period',periodKey(selectedPeriod));
   persistCartola();
 }
 
@@ -332,9 +519,10 @@ function saveCloud(){
   saveTimer=setTimeout(async()=>{
     try{
       await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
-        overrides:OVERRIDES, customCats:CUSTOM_CATS,
+        overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS,
         baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
         transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+        selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       },{merge:true});
       setSync('☁️ Sync');
@@ -354,14 +542,17 @@ async function loadCloud(){
       const cloudCount=Object.keys(d.overrides||{}).length;
       if(cloudCount>=localCount){
         OVERRIDES=d.overrides||{};
+        PERIOD_OVERRIDES=d.periodOverrides||{};
         CUSTOM_CATS=d.customCats||[];
         if(d.baseline) BASELINE={...d.baseline,asOf:new Date(d.baseline.asOf)};
+        if(d.selectedPeriod) selectedPeriod=parsePeriodKey(d.selectedPeriod);
         persistLocal();
       }else if(localCount>0||CUSTOM_CATS.length>0){
         await ref.set({
-          overrides:OVERRIDES,customCats:CUSTOM_CATS,
+          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,
           baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
           transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+          selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
           updatedAt:firebase.firestore.FieldValue.serverTimestamp()
         });
       }
@@ -377,9 +568,10 @@ async function loadCloud(){
       }
     }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
       await ref.set({
-        overrides:OVERRIDES,customCats:CUSTOM_CATS,
+        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,
         baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
-        transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear
+        transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+        selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null
       });
     }
     setSync('☁️ Sync');
@@ -415,13 +607,15 @@ function simulate(allTx){
 
 function showView(n){
   currentView=n;
-  ['inicio','graficos','movimientos','categoria'].forEach(v=>{
+  ['inicio','graficos','historial','movimientos','categoria'].forEach(v=>{
     document.getElementById('view-'+v).classList.toggle('hidden',v!==n);
   });
   document.querySelectorAll('.nav-btn').forEach(b=>{
     b.classList.toggle('tab-active',b.dataset.view===n);
     b.classList.toggle('text-white/40',b.dataset.view!==n);
   });
+  if(n==='historial') renderHistorial();
+  renderPeriodBar();
 }
 
 function openCategoryDetail(catName){
@@ -447,8 +641,12 @@ function openCategoryDetail(catName){
 
 function openCatModal(t){
   pendingCatKey=txKey(t);
+  const et=enrichTx(t);
   document.getElementById('catModalDesc').textContent=t.desc;
-  document.getElementById('catModalDate').textContent=fmtFecha(t.date);
+  document.getElementById('catModalDate').textContent='Banco: '+fmtFecha(t.date);
+  document.getElementById('catModalPeriod').textContent='Mes contable: '+periodLabel(et.acct)+(et.shifted?' · movido de '+periodLabel({year:et.bank.year,month:et.bank.month}):'');
+  populateMonthSelect(document.getElementById('catModalMonth'),et.acct.month);
+  document.getElementById('catModalYear').value=et.acct.year;
   document.getElementById('catModalOptions').innerHTML=getAssignable().map(c=>`
     <button data-cat="${c.name}" class="rounded-xl border px-3 py-2 text-left text-sm active:bg-panel2 ${c.name===t.cat.name?'border-ingreso bg-ingreso/10':'border-line'}">
       <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${c.color}"></span>${c.name}
@@ -456,22 +654,43 @@ function openCatModal(t){
   document.getElementById('catModal').classList.remove('hidden');
 }
 
+function setPeriodOverride(key,mode,year,month){
+  const t=TX.find(x=>txKey(x)===key);
+  if(!t) return;
+  if(mode==='auto') delete PERIOD_OVERRIDES[key];
+  else if(mode==='bank') PERIOD_OVERRIDES[key]=periodKey(bankPeriod(t));
+  else if(mode==='next'){
+    const d=new Date(t.date.getFullYear(),t.date.getMonth()+1,1);
+    PERIOD_OVERRIDES[key]=periodKey({year:d.getFullYear(),month:d.getMonth()});
+  }else if(mode==='custom'){
+    PERIOD_OVERRIDES[key]=periodKey({year:+year,month:+month});
+  }
+}
+
 function render(){
+  ensureSelectedPeriod();
   const base=getVisibleTx();
-  const ops=getOperationalTx();
+  const ops=selectedPeriod?getOperationalTxForPeriod(selectedPeriod):getAllOperationalTx();
   BAL=simulate(TX);
   document.getElementById('balDispo').textContent=fmt(BAL.cc+BAL.lineaDisp);
   document.getElementById('balCC').textContent=fmt(BAL.cc);
   document.getElementById('balLinea').textContent=fmt(BAL.lineaDisp);
   document.getElementById('balLineaSub').textContent=`Base ${BASELINE.asOf.toLocaleDateString('es-CL')} · Usado ${fmt(BAL.cupo-BAL.lineaDisp)} de ${fmt(BAL.cupo)}`;
-  document.getElementById('totEntradas').textContent=fmt(ops.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0));
-  document.getElementById('totGastos').textContent=fmt(ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0));
+  const ent=ops.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0);
+  const gas=ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0);
+  document.getElementById('totEntradas').textContent=fmt(ent);
+  document.getElementById('totGastos').textContent=fmt(gas);
+  const netEl=document.getElementById('totNeto');
+  netEl.textContent=fmt(ent-gas);
+  netEl.className='num text-sm font-semibold '+(ent-gas>=0?'text-ingreso':'text-gasto');
+  renderPeriodBar();
   document.getElementById('summary').classList.remove('hidden');
   document.getElementById('emptyHint').classList.add('hidden');
   document.getElementById('internalToggle').classList.toggle('hidden',!TX.filter(t=>t.cat.internal).length);
   document.getElementById('noChart').classList.add('hidden');
   renderLista(base);
   renderGastos(ops);
+  if(currentView==='historial') renderHistorial();
 }
 
 function renderLista(base){
@@ -483,7 +702,7 @@ function renderLista(base){
   document.getElementById('txList').innerHTML=d.map(t=>`
     <li class="rounded-2xl bg-panel border border-line px-4 py-3">
       <div class="flex justify-between gap-3 mb-2">
-        <span class="text-[11px] text-white/35">${fmtFecha(t.date)}</span>
+        <span class="text-[11px] text-white/35">${fmtFecha(t.date)}${t.shifted?` · contable ${MESES[t.acct.month].slice(0,3)}` : ''}</span>
         <span class="num font-semibold text-sm ${t.amount>0?'text-ingreso':'text-gasto'}">${t.amount>0?'+':''}${fmt(t.amount)}</span>
       </div>
       <p class="desc-full font-medium text-sm">${t.desc}</p>
@@ -574,7 +793,37 @@ document.getElementById('catDetailList').addEventListener('click',e=>{
 document.getElementById('catBackBtn').addEventListener('click',()=>showView(viewBeforeCategory));
 document.getElementById('catModalCancel').addEventListener('click',()=>document.getElementById('catModal').classList.add('hidden'));
 document.getElementById('catModalAuto').addEventListener('click',()=>{
-  if(pendingCatKey){delete OVERRIDES[pendingCatKey];saveCloud();document.getElementById('catModal').classList.add('hidden');render();}
+  if(pendingCatKey){
+    delete OVERRIDES[pendingCatKey];
+    delete PERIOD_OVERRIDES[pendingCatKey];
+    saveCloud();
+    document.getElementById('catModal').classList.add('hidden');
+    render();
+  }
+});
+document.getElementById('catModalPeriodBank').addEventListener('click',()=>{
+  if(!pendingCatKey) return;
+  setPeriodOverride(pendingCatKey,'bank');
+  saveCloud();
+  document.getElementById('catModal').classList.add('hidden');
+  render();
+});
+document.getElementById('catModalPeriodNext').addEventListener('click',()=>{
+  if(!pendingCatKey) return;
+  setPeriodOverride(pendingCatKey,'next');
+  saveCloud();
+  document.getElementById('catModal').classList.add('hidden');
+  render();
+});
+document.getElementById('catModalPeriodCustom').addEventListener('click',()=>{
+  if(!pendingCatKey) return;
+  const y=+document.getElementById('catModalYear').value;
+  const m=+document.getElementById('catModalMonth').value;
+  if(!y||m<0||m>11) return alert('Mes o año inválido');
+  setPeriodOverride(pendingCatKey,'custom',y,m);
+  saveCloud();
+  document.getElementById('catModal').classList.add('hidden');
+  render();
 });
 document.getElementById('catModalOptions').addEventListener('click',e=>{
   const btn=e.target.closest('[data-cat]');
@@ -588,6 +837,31 @@ document.getElementById('catModalOptions').addEventListener('click',e=>{
 document.getElementById('addCatBtn').addEventListener('click',()=>{
   document.getElementById('newCatName').value='';
   document.getElementById('newCatModal').classList.remove('hidden');
+});
+document.getElementById('editCatBtn').addEventListener('click',()=>{
+  renderEditCatList();
+  document.getElementById('editCatModal').classList.remove('hidden');
+});
+document.getElementById('editCatClose').addEventListener('click',()=>document.getElementById('editCatModal').classList.add('hidden'));
+document.getElementById('editCatList').addEventListener('click',e=>{
+  const saveBtn=e.target.closest('.edit-cat-save');
+  const delBtn=e.target.closest('.edit-cat-del');
+  if(saveBtn){
+    const old=saveBtn.dataset.old;
+    const input=saveBtn.closest('li').querySelector('.edit-cat-input');
+    const err=renameCustomCat(old,input.value);
+    if(err) return alert(err);
+    saveCloud();
+    renderEditCatList();
+    render();
+  }
+  if(delBtn){
+    if(deleteCustomCat(delBtn.dataset.old)){
+      saveCloud();
+      renderEditCatList();
+      render();
+    }
+  }
 });
 document.getElementById('newCatCancel').addEventListener('click',()=>document.getElementById('newCatModal').classList.add('hidden'));
 document.getElementById('newCatSave').addEventListener('click',()=>{
@@ -604,6 +878,18 @@ document.getElementById('internalToggle').addEventListener('click',()=>{
   document.getElementById('knob').classList.toggle('bg-ingreso',includeInternal);
   document.getElementById('knobDot').style.transform=includeInternal?'translateX(20px)':'translateX(0)';
   if(TX.length) render();
+});
+
+document.getElementById('periodPrev').addEventListener('click',()=>{shiftSelectedPeriod(1);saveCloud();render();});
+document.getElementById('periodNext').addEventListener('click',()=>{shiftSelectedPeriod(-1);saveCloud();render();});
+document.getElementById('periodLabel').addEventListener('click',()=>showView('historial'));
+document.getElementById('yearGroups').addEventListener('click',e=>{
+  const btn=e.target.closest('.hist-btn');
+  if(!btn?.dataset.period) return;
+  selectedPeriod=parsePeriodKey(btn.dataset.period);
+  saveCloud();
+  showView('inicio');
+  render();
 });
 
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
