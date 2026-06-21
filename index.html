@@ -73,20 +73,26 @@
     <p id="errorBox" class="hidden mt-4 text-sm text-gasto bg-gasto/10 border border-gasto/30 rounded-xl px-4 py-3"></p>
     <div id="summary" class="hidden mt-4 space-y-4">
       <div class="rounded-3xl bg-panel border border-line p-5">
-        <p class="text-xs uppercase tracking-wide text-white/40">Dinero Total Disponible Real</p>
+        <p id="balMainTitle" class="text-xs uppercase tracking-wide text-white/40">Saldos del mes</p>
         <p id="balDispo" class="num mt-1 text-3xl font-semibold">$0</p>
+        <p id="balDispoSub" class="text-[10px] text-white/35 mt-0.5"></p>
         <div class="mt-4 grid grid-cols-2 gap-3">
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Cuenta Corriente</p>
+            <p id="balCCLabel" class="text-[11px] text-white/40">Cuenta Corriente</p>
             <p id="balCC" class="num text-lg font-semibold">$0</p>
           </div>
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Línea Crédito Disp.</p>
+            <p id="balLineaLabel" class="text-[11px] text-white/40">Línea Crédito Disp.</p>
             <p id="balLinea" class="num text-lg font-semibold" style="color:#fbbf24">$0</p>
             <p id="balLineaSub" class="text-[10px] text-white/35 mt-0.5"></p>
           </div>
         </div>
-        <div class="mt-4 grid grid-cols-2 gap-3">
+        <div id="balTodayWrap" class="hidden mt-4 rounded-2xl bg-panel2/50 border border-line/60 p-3">
+          <p class="text-[10px] uppercase tracking-wide text-white/35">Disponible hoy (estimado)</p>
+          <p id="balTodayTotal" class="num text-lg font-semibold mt-1">$0</p>
+          <p id="balTodaySub" class="text-[10px] text-white/30 mt-0.5"></p>
+        </div>
+        <p id="monthFlowLabel" class="text-[10px] uppercase tracking-wide text-white/35 mt-5 mb-2">Movimientos del mes</p>
           <div class="rounded-2xl bg-panel2 border border-line p-3">
             <p class="text-[11px] text-white/40">Cuánto ganaste</p>
             <p id="totEntradas" class="num text-lg font-semibold text-ingreso">$0</p>
@@ -99,10 +105,14 @@
           </div>
         </div>
         <div class="mt-3 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
-          <span class="text-[11px] text-white/40">Te quedó (ganaste − gastaste)</span>
+          <span class="text-[11px] text-white/40">Te quedó operacional (ganaste − gastaste)</span>
           <span id="totNeto" class="num text-sm font-semibold">$0</span>
         </div>
-        <p class="text-[10px] text-white/30 mt-3">Suma todo lo que entró y salió en el mes contable: sueldo, transferencias recibidas, compras, etc. No cuenta dinero que solo pasó por la cuenta.</p>
+        <div id="balCartolaCierre" class="hidden mt-2 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
+          <span class="text-[11px] text-white/40">Saldo CC real al cierre (cartola)</span>
+          <span id="balCartolaCierreVal" class="num text-sm font-semibold">$0</span>
+        </div>
+        <p class="text-[10px] text-white/30 mt-3">«Te quedó» es el neto operacional del mes. El saldo cartola es la plata real en cuenta al cierre según el banco.</p>
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
@@ -1076,15 +1086,58 @@ function renderFlow(ops){
   document.getElementById('flowList').innerHTML=rows.join('');
 }
 
+function isLatestSelectedPeriod(){
+  const periods=getAvailablePeriods();
+  if(!periods.length||!selectedPeriod) return true;
+  return periodKey(selectedPeriod)===periods[0].key;
+}
+
+function renderDashboardBalances(){
+  BAL=simulate(TX);
+  const pk=selectedPeriod?periodKey(selectedPeriod):null;
+  const bank=pk?PERIOD_BANK[pk]:null;
+  const hasCartola=bank?.saldoFinal!=null;
+  const latest=isLatestSelectedPeriod();
+
+  if(hasCartola&&selectedPeriod){
+    document.getElementById('balMainTitle').textContent=`Cartola · ${periodLabel(selectedPeriod)}`;
+    document.getElementById('balDispo').textContent=fmt(bank.saldoFinal);
+    document.getElementById('balDispoSub').textContent='Saldo cuenta corriente al cierre del mes';
+    document.getElementById('balCCLabel').textContent='CC al inicio';
+    document.getElementById('balCC').textContent=bank.saldoInicial!=null?fmt(bank.saldoInicial):'—';
+    document.getElementById('balLineaLabel').textContent='Línea disp. (cierre)';
+    document.getElementById('balLinea').textContent=bank.lineaDisp!=null?fmt(bank.lineaDisp):'—';
+    if(bank.cupo&&bank.lineaDisp!=null)
+      document.getElementById('balLineaSub').textContent=`Usado ${fmt(bank.cupo-bank.lineaDisp)} de ${fmt(bank.cupo)}`;
+    else document.getElementById('balLineaSub').textContent='';
+    document.getElementById('balCartolaCierre').classList.add('hidden');
+  }else{
+    document.getElementById('balMainTitle').textContent='Disponible estimado';
+    document.getElementById('balDispo').textContent=fmt(BAL.cc+BAL.lineaDisp);
+    document.getElementById('balDispoSub').textContent=selectedPeriod?`Sin cartola de ${periodLabel(selectedPeriod)} — sube el Excel del mes`:'CC + línea de crédito';
+    document.getElementById('balCCLabel').textContent='Cuenta Corriente';
+    document.getElementById('balCC').textContent=fmt(BAL.cc);
+    document.getElementById('balLineaLabel').textContent='Línea Crédito Disp.';
+    document.getElementById('balLinea').textContent=fmt(BAL.lineaDisp);
+    document.getElementById('balLineaSub').textContent=`Base ${BASELINE.asOf.toLocaleDateString('es-CL')} · Usado ${fmt(BAL.cupo-BAL.lineaDisp)} de ${fmt(BAL.cupo)}`;
+    document.getElementById('balCartolaCierre').classList.add('hidden');
+  }
+
+  const todayWrap=document.getElementById('balTodayWrap');
+  if(hasCartola&&!latest){
+    todayWrap.classList.remove('hidden');
+    document.getElementById('balTodayTotal').textContent=fmt(BAL.cc+BAL.lineaDisp);
+    document.getElementById('balTodaySub').textContent=`CC ${fmt(BAL.cc)} + línea ${fmt(BAL.lineaDisp)} · al ${BASELINE.asOf.toLocaleDateString('es-CL')}`;
+  }else todayWrap.classList.add('hidden');
+
+  document.getElementById('monthFlowLabel').textContent=selectedPeriod?`Movimientos · ${periodLabel(selectedPeriod)}`:'Movimientos del mes';
+}
+
 function render(){
   ensureSelectedPeriod();
   const base=getVisibleTx();
   const ops=selectedPeriod?getOperationalTxForPeriod(selectedPeriod):getAllOperationalTx();
-  BAL=simulate(TX);
-  document.getElementById('balDispo').textContent=fmt(BAL.cc+BAL.lineaDisp);
-  document.getElementById('balCC').textContent=fmt(BAL.cc);
-  document.getElementById('balLinea').textContent=fmt(BAL.lineaDisp);
-  document.getElementById('balLineaSub').textContent=`Base ${BASELINE.asOf.toLocaleDateString('es-CL')} · Usado ${fmt(BAL.cupo-BAL.lineaDisp)} de ${fmt(BAL.cupo)}`;
+  renderDashboardBalances();
   const ent=ops.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0);
   const gas=ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0);
   document.getElementById('totEntradas').textContent=fmt(ent);
