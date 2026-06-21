@@ -131,6 +131,7 @@
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-base font-semibold">Gastos por categoría</h2>
       <div class="flex gap-2">
+        <button id="rulesBtn" class="text-xs text-white/50 border border-line rounded-full px-3 py-1.5 active:bg-panel2">Reglas</button>
         <button id="editCatBtn" class="text-xs text-white/50 border border-line rounded-full px-3 py-1.5 active:bg-panel2">Editar</button>
         <button id="addCatBtn" class="text-xs text-ingreso border border-ingreso/30 rounded-full px-3 py-1.5 active:bg-ingreso/10">+ Categoría</button>
       </div>
@@ -218,8 +219,20 @@
       <button id="catModalPeriodCustom" type="button" class="w-full text-xs border border-ingreso/40 text-ingreso rounded-xl py-2 active:bg-ingreso/10">Asignar a este mes</button>
     </div>
     <div id="catModalOptions" class="grid grid-cols-2 gap-2"></div>
+    <button id="catModalRemember" type="button" class="hidden w-full mt-3 text-xs text-ingreso border border-ingreso/40 rounded-xl py-2.5 active:bg-ingreso/10">Recordar comercio para futuros Excel</button>
     <button id="catModalAuto" class="w-full mt-3 text-xs text-white/40 py-2 border border-line rounded-xl active:bg-panel2">Volver a automático</button>
     <button id="catModalCancel" class="w-full mt-2 text-sm text-white/50 py-2">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal reglas de comercio -->
+<div id="rulesModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/70">
+  <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8 max-h-[85vh] overflow-y-auto" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
+    <p class="text-sm font-semibold mb-1">Reglas automáticas</p>
+    <p class="text-xs text-white/40 mb-4">Texto del banco → categoría. Al subir un Excel, se aplican solas.</p>
+    <ul id="rulesList" class="space-y-2"></ul>
+    <p id="noRules" class="hidden text-sm text-white/40 text-center py-6">Aún no hay reglas. En un movimiento pulsa Cambiar → elige categoría → Recordar comercio.</p>
+    <button id="rulesClose" class="w-full mt-4 text-sm text-white/50 py-2">Cerrar</button>
   </div>
 </div>
 
@@ -316,9 +329,9 @@ const DESC_RULES=[
   {cat:'Transferencias',kw:['altcom ingenieria','altcom','hidalgo vidal','molina escudero','millanguir','transf de terceros','transf a terceros','transferencia de','transferencia a']}
 ];
 
-let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
+let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, MERCHANT_RULES=[], TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
 let chart=null, filter='all', includeInternal=false;
-let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null;
+let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null, modalLastCat=null, modalCurrentDesc='';
 let currentUser=null, cloudEnabled=false, localOnly=false, saveTimer=null;
 let selectedPeriod=null;
 
@@ -485,7 +498,37 @@ function catColor(n){return findCat(n).color;}
 function isInternalCat(c){return !!(c&&c.internal);}
 function isNeutralCat(c){return !!(c&&c.neutral);}
 function getPasoCat(){return BASE_CATS.find(c=>c.name==='Pasó por la cuenta');}
+function bankTextKey(desc){
+  return normText(desc).replace(/^\d+\s*/,'').trim();
+}
+function matchesMerchantPattern(desc,pattern){
+  const k=bankTextKey(desc), p=normText(pattern);
+  return k===p||k.includes(p)||p.includes(k);
+}
+function matchMerchantRule(desc){
+  for(let i=MERCHANT_RULES.length-1;i>=0;i--){
+    const r=MERCHANT_RULES[i];
+    if(matchesMerchantPattern(desc,r.pattern)) return findCat(r.cat);
+  }
+  return null;
+}
+function saveMerchantRule(desc,catName){
+  const pattern=bankTextKey(desc);
+  if(!pattern) return;
+  MERCHANT_RULES=MERCHANT_RULES.filter(r=>r.pattern!==pattern);
+  MERCHANT_RULES.push({pattern,cat:catName});
+  TX.forEach(t=>{
+    if(matchesMerchantPattern(t.desc,pattern)) delete OVERRIDES[txKey(t)];
+  });
+  applyAutoCategories();
+}
+function removeMerchantRule(pattern){
+  MERCHANT_RULES=MERCHANT_RULES.filter(r=>r.pattern!==pattern);
+  applyAutoCategories();
+}
 function categorizar(d){
+  const m=matchMerchantRule(d);
+  if(m) return m;
   const t=normText(d);
   for(const r of DESC_RULES)
     if(r.kw.some(k=>t.includes(normText(k)))) return findCat(r.cat);
@@ -623,6 +666,7 @@ function loadLocal(){
   try{
     OVERRIDES=JSON.parse(localStorage.getItem('cartola-overrides')||'{}');
     PERIOD_OVERRIDES=JSON.parse(localStorage.getItem('cartola-period-overrides')||'{}');
+    MERCHANT_RULES=JSON.parse(localStorage.getItem('cartola-merchant-rules')||'[]');
     CUSTOM_CATS=JSON.parse(localStorage.getItem('cartola-custom-cats')||'[]');
     const b=JSON.parse(localStorage.getItem('cartola-baseline')||'null');
     if(b) BASELINE={...b,asOf:new Date(b.asOf)};
@@ -635,6 +679,7 @@ function loadLocal(){
 function persistLocal(){
   localStorage.setItem('cartola-overrides',JSON.stringify(OVERRIDES));
   localStorage.setItem('cartola-period-overrides',JSON.stringify(PERIOD_OVERRIDES));
+  localStorage.setItem('cartola-merchant-rules',JSON.stringify(MERCHANT_RULES));
   localStorage.setItem('cartola-custom-cats',JSON.stringify(CUSTOM_CATS));
   localStorage.setItem('cartola-baseline',JSON.stringify({...BASELINE,asOf:BASELINE.asOf.toISOString()}));
   if(selectedPeriod) localStorage.setItem('cartola-selected-period',periodKey(selectedPeriod));
@@ -648,7 +693,7 @@ async function flushCloudNow(){
   clearTimeout(saveTimer);
   setSync('Guardando…');
   await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
-    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS,
+    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS, merchantRules:MERCHANT_RULES,
     baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
     transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
     selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -679,12 +724,13 @@ async function loadCloud(){
         OVERRIDES=d.overrides||{};
         PERIOD_OVERRIDES=d.periodOverrides||{};
         CUSTOM_CATS=d.customCats||[];
+        MERCHANT_RULES=d.merchantRules||MERCHANT_RULES;
         if(d.baseline) BASELINE={...d.baseline,asOf:new Date(d.baseline.asOf)};
         if(d.selectedPeriod) selectedPeriod=parsePeriodKey(d.selectedPeriod);
         persistLocal();
       }else if(localCount>0||CUSTOM_CATS.length>0){
         await ref.set({
-          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,
+          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,merchantRules:MERCHANT_RULES,
           baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
           transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
           selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -709,7 +755,7 @@ async function loadCloud(){
       }
     }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
       await ref.set({
-        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,
+        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,merchantRules:MERCHANT_RULES,
         baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
         transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
         selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null
@@ -765,27 +811,29 @@ function showView(n){
 
 function openCategoryDetail(catName){
   viewBeforeCategory=currentView==='categoria'?'graficos':currentView;
-  const items=getVisibleTx().filter(t=>t.cat.name===catName);
+  const items=getVisibleTx().filter(t=>t.cat.name===catName&&t.amount<0);
   const total=items.reduce((a,t)=>a+Math.abs(t.amount),0);
   document.getElementById('catDetailName').textContent=catName;
   document.getElementById('catDetailName').style.color=catColor(catName);
   document.getElementById('catDetailTotal').textContent=fmt(total);
-  document.getElementById('catDetailCount').textContent=items.length+' movimiento'+(items.length!==1?'s':'');
+  document.getElementById('catDetailCount').textContent=items.length+' gasto'+(items.length!==1?'s':'');
   items.sort((a,b)=>b.date-a.date);
   document.getElementById('catDetailList').innerHTML=items.map(t=>`
     <li class="rounded-2xl bg-panel border border-line px-4 py-3">
       <div class="flex justify-between gap-3 mb-1">
         <span class="text-[11px] text-white/35">${fmtFecha(t.date)}</span>
-        <span class="num font-semibold text-sm ${t.amount>0?'text-ingreso':'text-gasto'}">${t.amount>0?'+':''}${fmt(t.amount)}</span>
+        <span class="num font-semibold text-sm text-gasto">${fmt(t.amount)}</span>
       </div>
       <p class="desc-full font-medium text-sm">${t.desc}</p>
       <button data-key="${txKey(t)}" class="cat-btn mt-2 text-xs border border-line rounded-full px-3 py-1 text-white/50">Cambiar</button>
-    </li>`).join('')||'<li class="text-sm text-white/40 text-center py-6">Sin movimientos</li>';
+    </li>`).join('')||'<li class="text-sm text-white/40 text-center py-6">Sin gastos en esta categoría</li>';
   showView('categoria');
 }
 
 function openCatModal(t){
   pendingCatKey=txKey(t);
+  modalLastCat=getCat(t).name;
+  modalCurrentDesc=t.desc;
   const et=enrichTx(t);
   document.getElementById('catModalDesc').textContent=t.desc;
   document.getElementById('catModalDate').textContent='Banco: '+fmtFecha(t.date);
@@ -793,10 +841,38 @@ function openCatModal(t){
   populateMonthSelect(document.getElementById('catModalMonth'),et.acct.month);
   document.getElementById('catModalYear').value=et.acct.year;
   document.getElementById('catModalOptions').innerHTML=getAssignable().map(c=>`
-    <button data-cat="${c.name}" class="rounded-xl border px-3 py-2 text-left text-sm active:bg-panel2 ${c.name===t.cat.name?'border-ingreso bg-ingreso/10':'border-line'}">
+    <button data-cat="${c.name}" class="rounded-xl border px-3 py-2 text-left text-sm active:bg-panel2 ${c.name===getCat(t).name?'border-ingreso bg-ingreso/10':'border-line'}">
       <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${c.color}"></span>${c.name}
     </button>`).join('');
+  updateRememberBtn();
   document.getElementById('catModal').classList.remove('hidden');
+}
+
+function updateRememberBtn(){
+  const btn=document.getElementById('catModalRemember');
+  const pat=bankTextKey(modalCurrentDesc);
+  const existing=MERCHANT_RULES.find(r=>r.pattern===pat);
+  if(!pat||!modalLastCat){
+    btn.classList.add('hidden');
+    return;
+  }
+  btn.classList.remove('hidden');
+  btn.textContent=existing
+    ?`Actualizar regla → ${modalLastCat}`
+    :`Recordar «${pat.slice(0,42)}${pat.length>42?'…':''}» → ${modalLastCat}`;
+}
+
+function renderRulesList(){
+  const box=document.getElementById('rulesList');
+  document.getElementById('noRules').classList.toggle('hidden',!!MERCHANT_RULES.length);
+  box.innerHTML=MERCHANT_RULES.map(r=>`
+    <li class="rounded-xl bg-panel2 border border-line px-3 py-2.5 flex gap-2 items-start">
+      <div class="min-w-0 flex-1">
+        <p class="text-xs text-white/80 break-words">${r.pattern}</p>
+        <p class="text-[10px] mt-1" style="color:${catColor(r.cat)}">→ ${r.cat}</p>
+      </div>
+      <button type="button" data-pattern="${r.pattern}" class="rule-del shrink-0 text-[10px] text-gasto border border-gasto/30 rounded-full px-2 py-1">Borrar</button>
+    </li>`).join('');
 }
 
 function setPeriodOverride(key,mode,year,month){
@@ -1070,9 +1146,27 @@ document.getElementById('catModalOptions').addEventListener('click',e=>{
   const btn=e.target.closest('[data-cat]');
   if(!btn||!pendingCatKey) return;
   OVERRIDES[pendingCatKey]=btn.dataset.cat;
+  modalLastCat=btn.dataset.cat;
+  document.querySelectorAll('#catModalOptions [data-cat]').forEach(b=>{
+    b.classList.toggle('border-ingreso',b.dataset.cat===modalLastCat);
+    b.classList.toggle('bg-ingreso/10',b.dataset.cat===modalLastCat);
+    b.classList.toggle('border-line',b.dataset.cat!==modalLastCat);
+  });
+  updateRememberBtn();
+  saveCloud();
+  render();
+});
+document.getElementById('catModalRemember').addEventListener('click',()=>{
+  if(!modalCurrentDesc||!modalLastCat) return;
+  saveMerchantRule(modalCurrentDesc,modalLastCat);
   saveCloud();
   document.getElementById('catModal').classList.add('hidden');
   render();
+  const box=document.getElementById('errorBox');
+  box.textContent='Regla guardada: «'+bankTextKey(modalCurrentDesc).slice(0,40)+(bankTextKey(modalCurrentDesc).length>40?'…':'')+'» → '+modalLastCat;
+  box.className='mt-4 text-sm text-ingreso bg-ingreso/10 border border-ingreso/30 rounded-xl px-4 py-3';
+  box.classList.remove('hidden');
+  setTimeout(()=>box.classList.add('hidden'),4000);
 });
 
 document.getElementById('addCatBtn').addEventListener('click',()=>{
@@ -1082,6 +1176,19 @@ document.getElementById('addCatBtn').addEventListener('click',()=>{
 document.getElementById('editCatBtn').addEventListener('click',()=>{
   renderEditCatList();
   document.getElementById('editCatModal').classList.remove('hidden');
+});
+document.getElementById('rulesBtn').addEventListener('click',()=>{
+  renderRulesList();
+  document.getElementById('rulesModal').classList.remove('hidden');
+});
+document.getElementById('rulesClose').addEventListener('click',()=>document.getElementById('rulesModal').classList.add('hidden'));
+document.getElementById('rulesList').addEventListener('click',e=>{
+  const btn=e.target.closest('.rule-del');
+  if(!btn) return;
+  removeMerchantRule(btn.dataset.pattern);
+  saveCloud();
+  renderRulesList();
+  render();
 });
 document.getElementById('editCatClose').addEventListener('click',()=>document.getElementById('editCatModal').classList.add('hidden'));
 document.getElementById('editCatList').addEventListener('click',e=>{
