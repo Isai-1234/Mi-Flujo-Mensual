@@ -92,27 +92,51 @@
           <p id="balTodayTotal" class="num text-lg font-semibold mt-1">$0</p>
           <p id="balTodaySub" class="text-[10px] text-white/30 mt-0.5"></p>
         </div>
-        <p id="monthFlowLabel" class="text-[10px] uppercase tracking-wide text-white/35 mt-5 mb-2">Movimientos del mes</p>
-          <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Cuánto ganaste</p>
-            <p id="totEntradas" class="num text-lg font-semibold text-ingreso">$0</p>
-            <p id="entradasDetalle" class="text-[10px] text-white/30 mt-1 leading-snug"></p>
+        <p id="monthFlowLabel" class="text-[10px] uppercase tracking-wide text-white/35 mt-5 mb-2">Ingreso vs gasto del mes</p>
+        <div id="incomePanel" class="rounded-2xl bg-panel2 border border-line p-4 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <p class="text-[11px] text-white/40">Sueldo (Remuneraciones)</p>
+              <p id="incSueldo" class="num text-lg font-semibold text-ingreso">$0</p>
+            </div>
+            <div>
+              <p class="text-[11px] text-white/40">Otras entradas</p>
+              <p id="incOtros" class="num text-lg font-semibold text-ingreso/90">$0</p>
+              <p id="incOtrosDet" class="text-[10px] text-white/30 mt-0.5 leading-snug"></p>
+            </div>
           </div>
-          <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Cuánto gastaste</p>
-            <p id="totGastos" class="num text-lg font-semibold text-gasto">$0</p>
-            <p id="gastosDetalle" class="text-[10px] text-white/30 mt-1 leading-snug"></p>
+          <div class="grid grid-cols-2 gap-3 pt-1 border-t border-line/60">
+            <div>
+              <p class="text-[11px] text-white/40">Total que entró</p>
+              <p id="totEntradas" class="num text-xl font-semibold text-ingreso">$0</p>
+              <p id="entradasDetalle" class="text-[10px] text-white/30 mt-0.5 leading-snug"></p>
+            </div>
+            <div>
+              <p class="text-[11px] text-white/40">Total que gastaste</p>
+              <p id="totGastos" class="num text-xl font-semibold text-gasto">$0</p>
+              <p id="gastosDetalle" class="text-[10px] text-white/30 mt-0.5 leading-snug"></p>
+            </div>
           </div>
+          <div>
+            <div class="flex justify-between text-[10px] text-white/35 mb-1">
+              <span>Gastos vs ingresos</span>
+              <span id="incBarPct" class="num">0%</span>
+            </div>
+            <div class="relative h-2.5 rounded-full bg-line overflow-hidden">
+              <div id="incBarGastos" class="absolute inset-y-0 left-0 rounded-full transition-all bg-ingreso" style="width:0%"></div>
+            </div>
+          </div>
+          <div id="incAlert" class="hidden rounded-xl px-3 py-2 text-[11px] leading-snug"></div>
         </div>
         <div class="mt-3 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
-          <span class="text-[11px] text-white/40">Te quedó operacional (ganaste − gastaste)</span>
+          <span class="text-[11px] text-white/40">Balance operacional (entró − gastó)</span>
           <span id="totNeto" class="num text-sm font-semibold">$0</span>
         </div>
         <div id="balCartolaCierre" class="hidden mt-2 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
           <span class="text-[11px] text-white/40">Saldo CC real al cierre (cartola)</span>
           <span id="balCartolaCierreVal" class="num text-sm font-semibold">$0</span>
         </div>
-        <p class="text-[10px] text-white/30 mt-3">«Te quedó» es el neto operacional del mes. El saldo cartola es la plata real en cuenta al cierre según el banco.</p>
+        <p class="text-[10px] text-white/30 mt-3">El balance operacional compara solo lo que entró y salió ese mes. No es lo mismo que quedarte sin plata: puedes tener saldo en cuenta, línea de crédito o traspasos LCA que cubren la diferencia.</p>
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
@@ -133,7 +157,8 @@
 
   <section id="view-historial" class="hidden px-5 pt-5">
     <h2 class="text-base font-semibold mb-1">Historial por mes</h2>
-    <p class="text-xs text-white/40 mb-4">Toca un mes para ver entradas, gastos y categorías según la fecha del banco.</p>
+    <p class="text-xs text-white/40 mb-4">Promedio real de lo que entra (no solo sueldo) vs lo que sale. Toca un mes para el detalle.</p>
+    <div id="histAnnual" class="hidden rounded-3xl bg-panel border border-line p-4 mb-5"></div>
     <div id="yearGroups" class="space-y-5"></div>
     <p id="noHistorial" class="hidden text-center text-sm text-white/40 mt-10">Carga una cartola para ver el historial mensual.</p>
   </section>
@@ -371,11 +396,82 @@ function getAvailablePeriods(){
   const map=new Map();
   getAllOperationalTx().forEach(t=>{
     const k=periodKey(t.acct);
-    if(!map.has(k)) map.set(k,{...t.acct,count:0,entradas:0,gastos:0});
+    if(!map.has(k)) map.set(k,{...t.acct,count:0,entradas:0,gastos:0,sueldo:0,otros:0});
     const s=map.get(k); s.count++;
-    if(t.amount>0) s.entradas+=t.amount; else s.gastos+=Math.abs(t.amount);
+    if(t.amount>0){
+      s.entradas+=t.amount;
+      if(t.cat.name==='Remuneraciones') s.sueldo+=t.amount; else s.otros+=t.amount;
+    }else s.gastos+=Math.abs(t.amount);
   });
   return [...map.entries()].map(([k,v])=>({key:k,...v,neto:v.entradas-v.gastos})).sort((a,b)=>b.key.localeCompare(a.key));
+}
+function incomeSummary(ops){
+  let sueldo=0,otros=0,gastos=0;
+  ops.forEach(t=>{
+    if(t.amount>0){
+      if(t.cat.name==='Remuneraciones') sueldo+=t.amount; else otros+=t.amount;
+    }else gastos+=Math.abs(t.amount);
+  });
+  return {sueldo,otros,entradas:sueldo+otros,gastos,margen:sueldo+otros-gastos};
+}
+function renderIncomePanel(ops){
+  const s=incomeSummary(ops);
+  const pk=selectedPeriod?periodKey(selectedPeriod):null;
+  const bank=pk?PERIOD_BANK[pk]:null;
+  document.getElementById('incSueldo').textContent=fmt(s.sueldo);
+  document.getElementById('incOtros').textContent=fmt(s.otros);
+  const otrosOps=ops.filter(t=>t.amount>0&&t.cat.name!=='Remuneraciones');
+  document.getElementById('incOtrosDet').textContent=s.otros?catBreakdown(otrosOps,true):'';
+  document.getElementById('totEntradas').textContent=fmt(s.entradas);
+  document.getElementById('totGastos').textContent=fmt(s.gastos);
+  document.getElementById('entradasDetalle').textContent=s.entradas?catBreakdown(ops.filter(t=>t.amount>0),true):'';
+  document.getElementById('gastosDetalle').textContent=s.gastos?catBreakdown(ops,false):'';
+  const netEl=document.getElementById('totNeto');
+  netEl.textContent=fmt(s.margen);
+  netEl.className='num text-sm font-semibold '+(s.margen>=0?'text-ingreso':'text-gasto');
+  const pct=s.entradas?Math.min(100,Math.round(s.gastos/s.entradas*100)):0;
+  document.getElementById('incBarPct').textContent=s.entradas?`${pct}% de lo que entró`:'—';
+  const bar=document.getElementById('incBarGastos');
+  bar.style.width=(s.entradas?Math.min(100,s.gastos/s.entradas*100):0)+'%';
+  bar.className='absolute inset-y-0 left-0 rounded-full transition-all '+(pct>100?'bg-gasto':pct>85?'bg-amber-400':'bg-ingreso');
+  const alert=document.getElementById('incAlert');
+  const saldoDelta=bank?.saldoInicial!=null&&bank?.saldoFinal!=null?bank.saldoFinal-bank.saldoInicial:null;
+  if(s.entradas&&s.gastos>s.entradas){
+    alert.className='rounded-xl px-3 py-2 text-[11px] leading-snug bg-amber-400/10 border border-amber-400/25 text-amber-100/90';
+    let msg=`Gastaste ${fmt(s.gastos-s.entradas)} más de lo que entró operacionalmente. Eso no significa que te quedaste sin plata: usaste ahorro previo, traspasos LCA o línea de crédito para cubrirlo.`;
+    if(saldoDelta!=null){
+      msg+=` Tu cuenta corriente pasó de ${fmt(bank.saldoInicial)} a ${fmt(bank.saldoFinal)} (${saldoDelta>=0?'+':''}${fmt(saldoDelta)} real en el banco).`;
+      if(Math.abs(saldoDelta)<Math.abs(s.margen))
+        msg+=` La diferencia con el balance operacional (${fmt(s.margen)}) son movimientos internos (LCA) que no cuentan como ingreso.`;
+    }
+    alert.textContent=msg;
+    alert.classList.remove('hidden');
+  }else if(s.entradas&&s.margen>=0){
+    alert.className='rounded-xl px-3 py-2 text-[11px] leading-snug bg-ingreso/10 border border-ingreso/30 text-ingreso';
+    let msg=`Te alcanzó: entraron ${fmt(s.entradas)} y gastaste ${fmt(s.gastos)}. Sobraron ${fmt(s.margen)} operacionalmente.`;
+    if(saldoDelta!=null) msg+=` CC: ${fmt(bank.saldoInicial)} → ${fmt(bank.saldoFinal)}.`;
+    alert.textContent=msg;
+    alert.classList.remove('hidden');
+  }else alert.classList.add('hidden');
+}
+function renderHistorialAnnual(periods){
+  const box=document.getElementById('histAnnual');
+  if(!periods.length){box.classList.add('hidden');return;}
+  const n=periods.length;
+  const sum=periods.reduce((a,p)=>({sueldo:a.sueldo+p.sueldo,otros:a.otros+p.otros,entradas:a.entradas+p.entradas,gastos:a.gastos+p.gastos,neto:a.neto+p.neto}),{sueldo:0,otros:0,entradas:0,gastos:0,neto:0});
+  const deficit=periods.filter(p=>p.gastos>p.entradas).length;
+  box.classList.remove('hidden');
+  box.innerHTML=`
+    <p class="text-xs uppercase tracking-wide text-white/40 mb-3">Promedio mensual · ${n} mes${n!==1?'es':''}</p>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div><p class="text-[11px] text-white/40">Sueldo</p><p class="num text-base font-semibold text-ingreso">${fmt(Math.round(sum.sueldo/n))}</p></div>
+      <div><p class="text-[11px] text-white/40">Otras entradas</p><p class="num text-base font-semibold text-ingreso/90">${fmt(Math.round(sum.otros/n))}</p></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 pt-3 border-t border-line/60">
+      <div><p class="text-[11px] text-white/40">Entró (promedio)</p><p class="num text-lg font-semibold text-ingreso">${fmt(Math.round(sum.entradas/n))}</p></div>
+      <div><p class="text-[11px] text-white/40">Gastó (promedio)</p><p class="num text-lg font-semibold text-gasto">${fmt(Math.round(sum.gastos/n))}</p></div>
+    </div>
+    <p class="text-[10px] text-white/35 mt-3 leading-snug">Total acumulado: entraron ${fmt(sum.entradas)}, gastaste ${fmt(sum.gastos)}. ${deficit?`${deficit} mes${deficit!==1?'es':''} gastaste más de lo que entró.`:'En todos los meses los gastos no superaron lo que entró.'}</p>`;
 }
 function ensureSelectedPeriod(){
   const periods=getAvailablePeriods();
@@ -422,6 +518,7 @@ function renderHistorial(){
   const periods=getAvailablePeriods();
   const box=document.getElementById('yearGroups');
   document.getElementById('noHistorial').classList.toggle('hidden',!!periods.length);
+  renderHistorialAnnual(periods);
   if(!periods.length){box.innerHTML='';return;}
   const byYear={};
   periods.forEach(p=>{(byYear[p.year]||(byYear[p.year]=[])).push(p);});
@@ -433,19 +530,20 @@ function renderHistorial(){
           const salNote=getPeriodShiftNote(p);
           const bank=PERIOD_BANK[p.key];
           const bankLine=bank?.saldoFinal!=null?`<p class="text-[10px] text-white/40 mt-1">CC cartola ${fmt(bank.saldoFinal)}</p>`:'';
+          const over=p.gastos>p.entradas;
           return `
           <button type="button" data-period="${p.key}" class="hist-btn w-full rounded-2xl bg-panel border ${selectedPeriod&&p.key===periodKey(selectedPeriod)?'border-ingreso/50':'border-line'} px-4 py-3 text-left active:bg-panel2">
             <div class="flex justify-between gap-3 items-start">
               <div class="min-w-0">
                 <p class="font-medium capitalize">${MESES[p.month]}</p>
-                <p class="text-[11px] text-white/35 mt-0.5">${p.count} movimiento${p.count!==1?'s':''}</p>
+                <p class="text-[11px] text-white/35 mt-0.5">Sueldo ${fmt(p.sueldo)} · otros ${fmt(p.otros)}</p>
                 ${bankLine}
                 ${salNote?`<p class="text-[10px] text-amber-400/85 mt-1 leading-snug">${salNote}</p>`:''}
               </div>
               <div class="text-right shrink-0">
                 <p class="num text-sm font-semibold ${p.neto>=0?'text-ingreso':'text-gasto'}">${fmt(p.neto)}</p>
-                <p class="text-[10px] text-white/30 mt-0.5">operacional</p>
-                <p class="text-[10px] text-white/30">${fmt(p.entradas)} / ${fmt(p.gastos)}</p>
+                <p class="text-[10px] text-white/30 mt-0.5">${over?'entró menos de lo gastado':'sobró operacionalmente'}</p>
+                <p class="text-[10px] text-white/30">entró ${fmt(p.entradas)} · gastó ${fmt(p.gastos)}</p>
               </div>
             </div>
           </button>`;}).join('')}
@@ -1141,15 +1239,7 @@ function render(){
   const base=getVisibleTx();
   const ops=selectedPeriod?getOperationalTxForPeriod(selectedPeriod):getAllOperationalTx();
   renderDashboardBalances();
-  const ent=ops.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0);
-  const gas=ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0);
-  document.getElementById('totEntradas').textContent=fmt(ent);
-  document.getElementById('totGastos').textContent=fmt(gas);
-  document.getElementById('entradasDetalle').textContent=ent?catBreakdown(ops,true):'';
-  document.getElementById('gastosDetalle').textContent=gas?catBreakdown(ops,false):'';
-  const netEl=document.getElementById('totNeto');
-  netEl.textContent=fmt(ent-gas);
-  netEl.className='num text-sm font-semibold '+(ent-gas>=0?'text-ingreso':'text-gasto');
+  renderIncomePanel(ops);
   renderFlow(ops);
   renderPeriodBar();
   document.getElementById('summary').classList.remove('hidden');
