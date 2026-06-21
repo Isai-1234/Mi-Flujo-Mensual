@@ -106,7 +106,7 @@
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
-        <p class="text-[10px] text-white/30 mb-2">Saldo real de la cartola + movimientos del mes (sin traspasos internos LCA). «Te quedó» arriba es solo entradas − gastos operacionales.</p>
+        <p class="text-[10px] text-white/30 mb-2">Con cartola: saldo real + todos los movimientos (incluye traspasos LCA). «Te quedó» arriba sigue siendo solo operacional.</p>
         <p id="flowBankMeta" class="hidden text-[10px] text-white/40 mb-2"></p>
         <p id="flowNote" class="hidden text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2 mb-3"></p>
         <ul id="flowList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
@@ -353,6 +353,10 @@ function txInPeriod(t,p){const a=getAccountingPeriod(t);return a.year===p.year&&
 function enrichTx(t){const cat=getCat(t),acct=getAccountingPeriod(t),bank=bankPeriod(t);return {...t,cat,acct,bank,periodKey:periodKey(acct),shifted:periodKey(acct)!==periodKey(bank)};}
 function getAllOperationalTx(){return TX.map(enrichTx).filter(t=>!isNeutralCat(t.cat)&&(!isInternalCat(t.cat)||includeInternal));}
 function getOperationalTxForPeriod(p){return getAllOperationalTx().filter(t=>txInPeriod(t,p));}
+/** Todos los movimientos del mes excepto «Pasó por la cuenta» — cuadra con saldo cartola. */
+function getBankFlowTxForPeriod(p){
+  return TX.map(enrichTx).filter(t=>txInPeriod(t,p)&&!isNeutralCat(getCat(t)));
+}
 function getAvailablePeriods(){
   const map=new Map();
   getAllOperationalTx().forEach(t=>{
@@ -1017,10 +1021,12 @@ function renderFlow(ops){
   const wrap=document.getElementById('flowWrap');
   const noteEl=document.getElementById('flowNote');
   const bankMetaEl=document.getElementById('flowBankMeta');
-  if(!ops.length&&!selectedPeriod){wrap.classList.add('hidden');return;}
-  wrap.classList.remove('hidden');
   const pk=selectedPeriod?periodKey(selectedPeriod):'';
   const bank=pk?PERIOD_BANK[pk]:null;
+  const bankMode=!!(bank?.saldoInicial!=null&&selectedPeriod);
+  const flowTx=bankMode?getBankFlowTxForPeriod(selectedPeriod):ops;
+  if(!flowTx.length&&!ops.length&&!selectedPeriod){wrap.classList.add('hidden');return;}
+  wrap.classList.remove('hidden');
   if(bank?.saldoInicial!=null&&bank?.saldoFinal!=null){
     bankMetaEl.textContent=`Cartola banco: inicial ${fmt(bank.saldoInicial)} → final ${fmt(bank.saldoFinal)}${bank.lineaDisp!=null?` · Línea disp. ${fmt(bank.lineaDisp)}`:''}`;
     bankMetaEl.classList.remove('hidden');
@@ -1034,38 +1040,39 @@ function renderFlow(ops){
   if(shiftedOut.length){
     const total=shiftedOut.reduce((a,t)=>a+Math.abs(t.amount),0);
     const dest=shiftedOut[0]?periodLabel(shiftedOut[0].acct):'';
-    note=`${shiftedOut.length} movimiento${shiftedOut.length!==1?'s':''} (${fmt(total)}) contabilizado${shiftedOut.length!==1?'s':''} en ${dest}, no aquí.`;
+    note=`${shiftedOut.length} mov. (${fmt(total)}) contados en ${dest}, no aquí.`;
   }else if(shiftedIn.length){
     const orig=shiftedIn[0]?periodLabel({year:shiftedIn[0].bank.year,month:shiftedIn[0].bank.month}):'';
-    note=`Incluye ${shiftedIn.length} movimiento${shiftedIn.length!==1?'s':''} de ${orig} asignado${shiftedIn.length!==1?'s':''} a este mes manualmente.`;
+    note=`Incluye ${shiftedIn.length} mov. de ${orig} asignados a este mes.`;
+  }else if(bankMode){
+    note='Incluye traspasos LCA y movimientos internos del banco para cuadrar con la cartola.';
   }
   if(note){noteEl.textContent=note;noteEl.classList.remove('hidden');}else{noteEl.classList.add('hidden');}
-  const sorted=[...ops].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
+  const sorted=[...flowTx].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
   const opening=getFlowOpening(selectedPeriod);
   let bal=opening.amount;
   const rows=[];
   rows.push(`<li class="flex justify-between text-[10px] text-white/35 pb-1 border-b border-line/40"><span>${opening.label}</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
-  if(opening.hint) rows.push(`<li class="text-[9px] text-white/25 pb-2 border-b border-line/40">${opening.hint}</li>`);
+  if(opening.hint&&!bankMode) rows.push(`<li class="text-[9px] text-white/25 pb-2 border-b border-line/40">${opening.hint}</li>`);
+  else if(bankMode) rows.push(`<li class="text-[9px] text-white/25 pb-2 border-b border-line/40">Columna derecha = saldo en cuenta corriente (como la cartola).</li>`);
   sorted.forEach(t=>{
     bal+=t.amount;
+    const internal=isInternalCat(t.cat);
     const short=t.desc.length>36?t.desc.slice(0,36)+'…':t.desc;
-    rows.push(`<li class="flex gap-2 items-start text-xs border-b border-line/40 pb-2 last:border-0">
+    rows.push(`<li class="flex gap-2 items-start text-xs border-b border-line/40 pb-2 last:border-0 ${internal?'opacity-75':''}">
       <span class="text-white/35 shrink-0 w-12 pt-0.5">${String(t.date.getDate()).padStart(2,'0')}/${String(t.date.getMonth()+1).padStart(2,'0')}</span>
       <div class="flex-1 min-w-0">
-        <p class="${t.amount>0?'text-ingreso':'text-gasto'} num font-medium">${t.amount>0?'+':'−'}${fmt(Math.abs(t.amount))}${t.shifted?' <span class="text-white/30">↪</span>':''}</p>
+        <p class="${internal?'text-white/50':t.amount>0?'text-ingreso':'text-gasto'} num font-medium">${t.amount>0?'+':'−'}${fmt(Math.abs(t.amount))}${internal?' <span class="text-[9px] text-white/35">LCA</span>':''}${t.shifted?' <span class="text-white/30">↪</span>':''}</p>
         <p class="text-white/40 truncate">${short}</p>
       </div>
       <span class="num font-semibold shrink-0 pt-0.5 ${bal>=0?'text-white':'text-gasto'}">${fmt(bal)}</span>
     </li>`);
   });
   const monthNet=ops.reduce((a,t)=>a+t.amount,0);
-  rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo tras movimientos listados</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">${bankMode?'Saldo final CC (cartola)':'Saldo tras movimientos listados'}</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
   rows.push(`<li class="flex justify-between text-[10px] text-white/35 pt-1"><span>Este mes operacional (= Te quedó)</span><span class="num ${monthNet>=0?'text-ingreso':'text-gasto'}">${fmt(monthNet)}</span></li>`);
-  if(bank?.saldoFinal!=null){
-    rows.push(`<li class="flex justify-between text-xs font-medium pt-2 border-t border-line/40 mt-1"><span class="text-white/50">Saldo real CC (cartola)</span><span class="num text-ingreso">${fmt(bank.saldoFinal)}</span></li>`);
-    if(Math.abs(bal-bank.saldoFinal)>1000)
-      rows.push(`<li class="text-[9px] text-white/30 pt-1">La diferencia con la cartola son traspasos LCA, amortizaciones e impuestos internos del banco (no listados arriba).</li>`);
-  }
+  if(bank?.saldoFinal!=null&&Math.abs(bal-bank.saldoFinal)>1000)
+    rows.push(`<li class="text-[9px] text-amber-400/80 pt-1">Diferencia ${fmt(Math.abs(bal-bank.saldoFinal))} vs cartola — revisa que el Excel del mes esté completo.</li>`);
   document.getElementById('flowList').innerHTML=rows.join('');
 }
 
