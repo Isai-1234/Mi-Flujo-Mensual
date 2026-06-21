@@ -294,24 +294,25 @@ const BASE_CATS = [
 ];
 const DEFAULT_CAT = {name:'Otros Gastos',color:'#71717a',internal:false,neutral:false,kw:[]};
 
-/** Reglas por texto del banco — orden importa (más específico primero). Basado en cartola real. */
+/** Reglas por texto del banco — orden importa (más específico primero). Tabla anotada por el usuario. */
 const DESC_RULES=[
   {cat:'Movimiento Interno Banco',kw:['impuesto sobregiro','intereses linea de credito','intereses lin','amortizacion','uso lca','traspaso con la cuenta','traspaso internet desde l','desde lcredito','lca n']},
-  {cat:'Arriendo',kw:['luz hidalgo','pago en linea arriendo','inmobiliaria','cevilar',' arriendo']},
-  {cat:'Luz',kw:['pago en linea chilquinta','chilquinta','cge dist','enel dist','enel ','saesa','cooprel','metrogas','electricidad']},
+  {cat:'Remuneraciones',kw:['remuneracion fundacion','remuneracion','liquidacion','haberes',' fundacion e','fundacion educ','beneficio']},
+  {cat:'Arriendo',kw:['luz hidalgo','pago en linea arriendo','inmobiliaria','cevilar',' arriendo','arrendamiento']},
+  {cat:'Luz',kw:['pago en linea chilquinta','chilquinta energia','chilquinta','cge dist','enel dist','enel ','saesa','cooprel','metrogas','electricidad']},
   {cat:'Agua',kw:['pago en linea esval','esval','aguas andinas','smec','smaesa','sanitaria']},
   {cat:'Internet y Telefonía',kw:['telefonica del sur','tel sur','movistar','entel','wom','claro','vtr','gtos fijos','telefonia']},
   {cat:'Kiosco Anabel',kw:['dulce anabel','dulce amor']},
-  {cat:'Combustible',kw:['copec','shell','petrobras','bencina','combustible','elohim cars','estacion de servicio']},
-  {cat:'Alimentos',kw:['unimarc','jumbo','lider','tottus','ok market','okmarket','santa isabel','mayorista 10','mayorista10','mini market','minimarket','mini mercado','mini market','almacen ','economico ','acuenta ','meridiana','campo lindo','el sabor chile','pasteleria','elaboracion de pan','panque']},
-  {cat:'Restaurantes y Comida',kw:['panaderia','pan de miel','dolce capri','doggi','mcdonald','burger king','kfc','domino','pizza hut','pizza ','sushi','restaurant','restor','rappi','pedidos ya','pedidosya','uber eats','mamacocha','taller la obra','inversiones ma','comida rapida','comercial el sabor']},
-  {cat:'Servicios Digitales',kw:['microsoft','google','google one','google*','apple.com','itunes','netflix','spotify','claude.ai','amazon prime','disney','hbo','max.com','adobe','dropbox','openai','cursor','github','pago recurrente google','pago recurrente microsoft','pago recurrente apple','pago recurrente netflix','pago recurrente spotify','pago recurrente internacional vd cl']},
-  {cat:'Salud',kw:['farmacia','cruz verde','salcobrand','ahumada','smart fit','clinica','hospital','fonasa','isapre','consalud','centro medico']},
-  {cat:'Ropa y Hogar',kw:['falabella','ripley','paris ','sodimac','homecenter','hites','corona','mercado libre','mercadolibre','la polar','reparacion calzado','compra de ropa','ferreteria','construmart','easy ']},
-  {cat:'Repuestos Vehículo',kw:['repuesto','famae','familae','automotriz','neumatico','autopartes','revision tecnica','revisiontecnica','seguro obligatorio','tag ','revision tec','municipalidad']},
-  {cat:'Seguros y Créditos',kw:['mapfre','consorcio','bci seguros','sudamericana',' metlife','zurich','seguro ','credito','cuota','prestamo','multipago en linea','pago tarjeta']},
-  {cat:'Educación',kw:['colegio','universidad','matricula','academia']},
-  {cat:'Remuneraciones',kw:['remuneracion','sueldo','liquidacion','haberes','fundacion']}
+  {cat:'Servicios Digitales',kw:['huawei internacional','com huawei','huawei','evidentemente','ivenetemente','icloud','apple.com','itunes','apple store','microsoft','office 365','google one','google*','google','netflix','spotify','claude.ai','amazon prime','disney','hbo','max.com','adobe','dropbox','openai','cursor','github','pago recurrente com huawei','pago recurrente microsoft','pago recurrente google','pago recurrente apple','pago recurrente netflix','pago recurrente spotify','pago recurrente internacional']},
+  {cat:'Combustible',kw:['copec','shell','petrobras','bencina','combustible','elohim cars','estacion de servicio','peco','texaco']},
+  {cat:'Alimentos',kw:['taller la obra','tallerlaobra','campo lindo','comercial campo','el sabor chile','sabor chile','dulce cafe','dolce cafe','dulce isabel','unimarc','jumbo','lider','tottus','ok market','okmarket','santa isabel','mayorista 10','mayorista10','mini market','minimarket','mini mercado','almacen ','economico ','acuenta ','meridiana','pasteleria','elaboracion de pan','panque','supermercado','comercial el sabor','feria de aliment']},
+  {cat:'Restaurantes y Comida',kw:['inversiones maria mercedes','inversiones ma','panaderia','pan de miel','dolce capri','doggi','mcdonald','burger king','kfc','domino','pizza hut','pizza ','sushi','restaurant','restor','rappi','pedidos ya','pedidosya','uber eats','mamacocha','comida rapida','pizzeria','negocio del barrio']},
+  {cat:'Salud',kw:['farmacia','cruz verde','salcobrand','ahumada','smart fit','clinica','hospital','fonasa','isapre','consalud','centro medico','herramientas salud']},
+  {cat:'Ropa y Hogar',kw:['merendero','falabella','ripley','paris ','sodimac','homecenter','hites','corona','mercado libre','mercadolibre','la polar','reparacion calzado','compra de ropa','ferreteria','construmart','easy ','manualidades','artesania']},
+  {cat:'Repuestos Vehículo',kw:['repuesto','famae','familae','automotriz','neumatico','autopartes','revision tecnica','revisiontecnica','seguro obligatorio','tag ','revision tec','municipalidad','seguro ley']},
+  {cat:'Seguros y Créditos',kw:['mapfre','consorcio','bci seguros','sudamericana','metlife','zurich','seguro ','credito','cuota','prestamo','multipago en linea','pago tarjeta']},
+  {cat:'Educación',kw:['colegio','universidad','matricula',' academia']},
+  {cat:'Otros Gastos',kw:['impuesto timbres','impuesto timbre','estampillas','timbres y estampillas']}
 ];
 
 let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
