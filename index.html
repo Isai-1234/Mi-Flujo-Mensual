@@ -240,7 +240,7 @@
 <div id="editCatModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/70">
   <div class="w-full max-w-md rounded-t-3xl bg-panel border border-line p-5 pb-8 max-h-[85vh] overflow-y-auto" style="padding-bottom:calc(env(safe-area-inset-bottom)+1.25rem)">
     <p class="text-sm font-semibold mb-1">Editar categorías</p>
-    <p class="text-xs text-white/40 mb-4">Solo las categorías que creaste tú. Los movimientos asignados se actualizan solos.</p>
+    <p class="text-xs text-white/40 mb-4">Todas tus categorías. Al guardar, los movimientos y reglas se actualizan solos. Las del sistema no se pueden eliminar.</p>
     <ul id="editCatList" class="space-y-2"></ul>
     <button id="editCatClose" class="w-full mt-4 text-sm text-white/50 py-2">Cerrar</button>
   </div>
@@ -329,7 +329,7 @@ const DESC_RULES=[
   {cat:'Transferencias',kw:['altcom ingenieria','altcom','hidalgo vidal','molina escudero','millanguir','transf de terceros','transf a terceros','transferencia de','transferencia a']}
 ];
 
-let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, MERCHANT_RULES=[], TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
+let CUSTOM_CATS=[], CAT_RENAMES={}, OVERRIDES={}, PERIOD_OVERRIDES={}, MERCHANT_RULES=[], TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
 let chart=null, filter='all', includeInternal=false;
 let currentView='inicio', viewBeforeCategory='graficos', pendingCatKey=null, modalLastCat=null, modalCurrentDesc='';
 let currentUser=null, cloudEnabled=false, localOnly=false, saveTimer=null;
@@ -449,14 +449,36 @@ function renderHistorial(){
 
 function normText(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[°º]/g,'').trim();}
 
-function renameCustomCat(oldName,newName){
+function isBaseCatName(n){return n===DEFAULT_CAT.name||BASE_CATS.some(c=>c.name===n);}
+function catDisplayName(n){return CAT_RENAMES[n]||n;}
+function resolveCanonicalName(n){
+  for(const [k,v] of Object.entries(CAT_RENAMES)) if(v===n) return k;
+  return n;
+}
+function migrateCatName(from,to){
+  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===from) OVERRIDES[k]=to;});
+  MERCHANT_RULES.forEach(r=>{if(r.cat===from) r.cat=to;});
+}
+function renameCat(canonicalOld,newName){
   const n=newName.trim();
-  if(!n||n===oldName) return 'Nombre inválido';
-  if(!CUSTOM_CATS.some(c=>c.name===oldName)) return 'Categoría no encontrada';
-  if(getAssignable().some(c=>c.name.toLowerCase()===n.toLowerCase())) return 'Ya existe una categoría con ese nombre';
-  const cat=CUSTOM_CATS.find(c=>c.name===oldName);
-  cat.name=n;
-  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===oldName) OVERRIDES[k]=n;});
+  const oldDisplay=catDisplayName(canonicalOld);
+  if(!n||n===oldDisplay) return 'Nombre inválido';
+  const taken=getAssignable().some(c=>c.name.toLowerCase()===n.toLowerCase()&&c.name.toLowerCase()!==oldDisplay.toLowerCase());
+  if(taken) return 'Ya existe una categoría con ese nombre';
+  const custom=CUSTOM_CATS.find(c=>c.name===canonicalOld);
+  if(custom){
+    custom.name=n;
+    migrateCatName(oldDisplay,n);
+  }else if(isBaseCatName(canonicalOld)){
+    if(n===canonicalOld) delete CAT_RENAMES[canonicalOld];
+    else{
+      CAT_RENAMES[canonicalOld]=n;
+      if(!CUSTOM_CATS.some(c=>c.name===n))
+        CUSTOM_CATS.push({name:n,color:(BASE_CATS.find(c=>c.name===canonicalOld)||DEFAULT_CAT).color});
+    }
+    migrateCatName(oldDisplay,n);
+  }else return 'Categoría no encontrada';
+  applyAutoCategories();
   return null;
 }
 
@@ -464,35 +486,71 @@ function populateMonthSelect(sel,selectedMonth){
   sel.innerHTML=MESES.map((m,i)=>`<option value="${i}" ${i===selectedMonth?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('');
 }
 
+function getEditableCategories(){
+  const items=[];
+  const add=(c,deletable,builtin)=>{
+    items.push({canonical:c.name,display:catDisplayName(c.name),color:c.color,deletable,builtin});
+  };
+  add(DEFAULT_CAT,false,true);
+  BASE_CATS.filter(c=>!c.internal&&!c.neutral).forEach(c=>add(c,false,true));
+  CUSTOM_CATS.forEach(c=>{
+    if(Object.values(CAT_RENAMES).includes(c.name)) return;
+    add(c,true,false);
+  });
+  return items;
+}
 function renderEditCatList(){
-  const list=document.getElementById('editCatList');
-  if(!CUSTOM_CATS.length){
-    list.innerHTML='<li class="text-sm text-white/40 text-center py-6">No tienes categorías personalizadas aún</li>';
-    return;
-  }
-  list.innerHTML=CUSTOM_CATS.map(c=>`
+  const items=getEditableCategories();
+  document.getElementById('editCatList').innerHTML=items.map(c=>`
     <li class="rounded-2xl bg-panel2 border border-line p-3">
       <div class="flex items-center gap-2 mb-2">
         <span class="w-2 h-2 rounded-full shrink-0" style="background:${c.color}"></span>
-        <input data-old="${c.name}" type="text" value="${c.name}" maxlength="40" class="edit-cat-input flex-1 bg-panel border border-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-ingreso" />
+        <input data-canonical="${c.canonical}" type="text" value="${c.display}" maxlength="40" class="edit-cat-input flex-1 bg-panel border border-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-ingreso" />
+        ${c.builtin?'<span class="text-[9px] text-white/25 shrink-0">base</span>':''}
       </div>
       <div class="flex gap-2">
-        <button data-old="${c.name}" type="button" class="edit-cat-save flex-1 text-xs bg-ingreso text-black font-semibold rounded-xl py-2">Guardar</button>
-        <button data-old="${c.name}" type="button" class="edit-cat-del text-xs border border-gasto/40 text-gasto rounded-xl px-3 py-2">Eliminar</button>
+        <button data-canonical="${c.canonical}" type="button" class="edit-cat-save flex-1 text-xs bg-ingreso text-black font-semibold rounded-xl py-2">Guardar</button>
+        ${c.deletable?`<button data-canonical="${c.canonical}" type="button" class="edit-cat-del text-xs border border-gasto/40 text-gasto rounded-xl px-3 py-2">Eliminar</button>`:'<span class="text-[10px] text-white/25 px-2 py-2">—</span>'}
       </div>
     </li>`).join('');
 }
 
-function deleteCustomCat(name){
-  if(!confirm(`¿Eliminar "${name}"? Los movimientos quedarán sin esa categoría.`)) return false;
-  CUSTOM_CATS=CUSTOM_CATS.filter(c=>c.name!==name);
-  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===name) delete OVERRIDES[k];});
+function deleteCustomCat(canonical){
+  const display=catDisplayName(canonical);
+  if(!confirm(`¿Eliminar "${display}"? Los movimientos volverán a categorizarse solos.`)) return false;
+  CUSTOM_CATS=CUSTOM_CATS.filter(c=>c.name!==canonical&&c.name!==display);
+  Object.keys(CAT_RENAMES).forEach(k=>{if(CAT_RENAMES[k]===display||k===canonical) delete CAT_RENAMES[k];});
+  Object.keys(OVERRIDES).forEach(k=>{if(OVERRIDES[k]===display||OVERRIDES[k]===canonical) delete OVERRIDES[k];});
+  MERCHANT_RULES=MERCHANT_RULES.filter(r=>r.cat!==display&&r.cat!==canonical);
+  applyAutoCategories();
   return true;
 }
-function getAssignable(){return [DEFAULT_CAT,...BASE_CATS.filter(c=>!c.internal),...CUSTOM_CATS.map(c=>({...c,internal:false,neutral:false}))];}
+function getAssignable(){
+  const seen=new Set(), out=[];
+  const push=c=>{
+    const r=findCat(c.name);
+    if(seen.has(r.name)) return;
+    seen.add(r.name);
+    out.push(r);
+  };
+  push(DEFAULT_CAT);
+  BASE_CATS.filter(c=>!c.internal).forEach(push);
+  CUSTOM_CATS.forEach(c=>push(c));
+  return out;
+}
 function findCat(n){
+  n=resolveCanonicalName(n);
+  if(CAT_RENAMES[n]){
+    const custom=CUSTOM_CATS.find(c=>c.name===CAT_RENAMES[n]);
+    const color=custom?.color||(BASE_CATS.find(c=>c.name===n)||DEFAULT_CAT).color;
+    return {name:CAT_RENAMES[n],color,internal:false,neutral:false};
+  }
   if(n===DEFAULT_CAT.name) return DEFAULT_CAT;
-  return BASE_CATS.find(c=>c.name===n)||CUSTOM_CATS.find(c=>c.name===n)||DEFAULT_CAT;
+  const base=BASE_CATS.find(c=>c.name===n);
+  if(base) return base;
+  const custom=CUSTOM_CATS.find(c=>c.name===n);
+  if(custom) return {...custom,internal:false,neutral:false};
+  return DEFAULT_CAT;
 }
 function catColor(n){return findCat(n).color;}
 function isInternalCat(c){return !!(c&&c.internal);}
@@ -667,6 +725,7 @@ function loadLocal(){
     OVERRIDES=JSON.parse(localStorage.getItem('cartola-overrides')||'{}');
     PERIOD_OVERRIDES=JSON.parse(localStorage.getItem('cartola-period-overrides')||'{}');
     MERCHANT_RULES=JSON.parse(localStorage.getItem('cartola-merchant-rules')||'[]');
+    CAT_RENAMES=JSON.parse(localStorage.getItem('cartola-cat-renames')||'{}');
     CUSTOM_CATS=JSON.parse(localStorage.getItem('cartola-custom-cats')||'[]');
     const b=JSON.parse(localStorage.getItem('cartola-baseline')||'null');
     if(b) BASELINE={...b,asOf:new Date(b.asOf)};
@@ -680,6 +739,7 @@ function persistLocal(){
   localStorage.setItem('cartola-overrides',JSON.stringify(OVERRIDES));
   localStorage.setItem('cartola-period-overrides',JSON.stringify(PERIOD_OVERRIDES));
   localStorage.setItem('cartola-merchant-rules',JSON.stringify(MERCHANT_RULES));
+  localStorage.setItem('cartola-cat-renames',JSON.stringify(CAT_RENAMES));
   localStorage.setItem('cartola-custom-cats',JSON.stringify(CUSTOM_CATS));
   localStorage.setItem('cartola-baseline',JSON.stringify({...BASELINE,asOf:BASELINE.asOf.toISOString()}));
   if(selectedPeriod) localStorage.setItem('cartola-selected-period',periodKey(selectedPeriod));
@@ -693,7 +753,7 @@ async function flushCloudNow(){
   clearTimeout(saveTimer);
   setSync('Guardando…');
   await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
-    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS, merchantRules:MERCHANT_RULES,
+    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS, catRenames:CAT_RENAMES, merchantRules:MERCHANT_RULES,
     baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
     transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
     selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -724,13 +784,14 @@ async function loadCloud(){
         OVERRIDES=d.overrides||{};
         PERIOD_OVERRIDES=d.periodOverrides||{};
         CUSTOM_CATS=d.customCats||[];
+        CAT_RENAMES=d.catRenames||CAT_RENAMES;
         MERCHANT_RULES=d.merchantRules||MERCHANT_RULES;
         if(d.baseline) BASELINE={...d.baseline,asOf:new Date(d.baseline.asOf)};
         if(d.selectedPeriod) selectedPeriod=parsePeriodKey(d.selectedPeriod);
         persistLocal();
       }else if(localCount>0||CUSTOM_CATS.length>0){
         await ref.set({
-          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,merchantRules:MERCHANT_RULES,
+          overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,
           baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
           transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
           selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
@@ -755,7 +816,7 @@ async function loadCloud(){
       }
     }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
       await ref.set({
-        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,merchantRules:MERCHANT_RULES,
+        overrides:OVERRIDES,periodOverrides:PERIOD_OVERRIDES,customCats:CUSTOM_CATS,catRenames:CAT_RENAMES,merchantRules:MERCHANT_RULES,
         baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
         transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
         selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null
@@ -1195,16 +1256,16 @@ document.getElementById('editCatList').addEventListener('click',e=>{
   const saveBtn=e.target.closest('.edit-cat-save');
   const delBtn=e.target.closest('.edit-cat-del');
   if(saveBtn){
-    const old=saveBtn.dataset.old;
+    const canonical=saveBtn.dataset.canonical;
     const input=saveBtn.closest('li').querySelector('.edit-cat-input');
-    const err=renameCustomCat(old,input.value);
+    const err=renameCat(canonical,input.value);
     if(err) return alert(err);
     saveCloud();
     renderEditCatList();
     render();
   }
   if(delBtn){
-    if(deleteCustomCat(delBtn.dataset.old)){
+    if(deleteCustomCat(delBtn.dataset.canonical)){
       saveCloud();
       renderEditCatList();
       render();
