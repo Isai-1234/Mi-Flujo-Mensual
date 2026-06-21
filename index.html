@@ -67,6 +67,7 @@
       </div>
       <p id="dropzoneTitle" class="font-medium text-sm">Cargar Cartola Santander</p>
       <p id="dropzoneSub" class="mt-0.5 text-xs text-white/40">Excel (.xlsx)</p>
+      <button id="dropzoneClear" type="button" class="hidden mt-3 text-[10px] text-gasto/80 underline">Vaciar historial y empezar de cero</button>
       <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
     </label>
     <p id="errorBox" class="hidden mt-4 text-sm text-gasto bg-gasto/10 border border-gasto/30 rounded-xl px-4 py-3"></p>
@@ -105,7 +106,8 @@
       </div>
       <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
         <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
-        <p class="text-[10px] text-white/30 mb-3">Cómo va sumando y restando tu plata, en orden de fecha.</p>
+        <p class="text-[10px] text-white/30 mb-2">Ingresos y gastos en orden de fecha. El saldo final debe coincidir con «Te quedó».</p>
+        <p id="flowNote" class="hidden text-[10px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2 mb-3"></p>
         <ul id="flowList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
       </div>
       <button id="internalToggle" class="hidden w-full flex items-center justify-between gap-3 rounded-2xl bg-panel border border-line px-4 py-3 text-left active:bg-panel2">
@@ -167,6 +169,15 @@
     <ul id="catDetailList" class="space-y-2"></ul>
   </section>
 </main>
+
+<!-- Procesando cartola -->
+<div id="processingOverlay" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/75 px-5">
+  <div class="rounded-2xl bg-panel border border-line px-6 py-5 text-center max-w-xs">
+    <div class="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-ingreso border-t-transparent animate-spin"></div>
+    <p id="processingMsg" class="text-sm font-medium">Procesando cartola…</p>
+    <p class="text-[10px] text-white/40 mt-2">No cierres la app</p>
+  </div>
+</div>
 
 <!-- LOGIN -->
 <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-5">
@@ -262,26 +273,46 @@ let BASELINE = { asOf:new Date(2026,5,20), cc:1951, lineaDisp:33995, cupo:300000
 const COLOR_POOL = ['#e879f9','#fb923c','#4ade80','#60a5fa','#f472b6','#c084fc','#2dd4bf','#fb7185'];
 
 const BASE_CATS = [
-  {name:'Movimiento Interno Banco',color:'#4b5563',internal:true,neutral:false,kw:['traspaso con la cuenta','traspaso internet desde l','desde lcredito','amortizacion','lca n','impuesto sobregiro','uso lca','intereses linea de credito']},
+  {name:'Movimiento Interno Banco',color:'#4b5563',internal:true,neutral:false,kw:[]},
   {name:'Pasó por la cuenta',color:'#9ca3af',internal:false,neutral:true,kw:[]},
-  {name:'Remuneraciones',color:'#0ea5e9',internal:false,neutral:false,kw:['remuneracion','sueldo','liquidacion','fundacion','haberes']},
-  {name:'Arriendo',color:'#a855f7',internal:false,neutral:false,kw:['arriendo','arrendamiento','inmobiliaria']},
-  {name:'Luz',color:'#facc15',internal:false,neutral:false,kw:['chilquinta','cge','enel','electricidad','energia','saesa']},
-  {name:'Agua',color:'#06b6d4',internal:false,neutral:false,kw:['esval','aguas andinas','sanitaria']},
-  {name:'Internet y Telefonía',color:'#6366f1',internal:false,neutral:false,kw:['telefonica del sur','movistar','entel','wom','claro','vtr','internet','telefonia']},
-  {name:'Combustible',color:'#78716c',internal:false,neutral:false,kw:['copec','shell','petrobras','bencina','combustible']},
-  {name:'Repuestos Vehículo',color:'#64748b',internal:false,neutral:false,kw:['repuesto','automotriz','neumatico','autopartes']},
-  {name:'Salud',color:'#ec4899',internal:false,neutral:false,kw:['farmacia','cruz verde','salcobrand','clinica']},
-  {name:'Educación',color:'#14b8a6',internal:false,neutral:false,kw:['colegio','universidad','matricula']},
-  {name:'Ropa y Hogar',color:'#d946ef',internal:false,neutral:false,kw:['falabella','paris','ripley','sodimac','homecenter']},
-  {name:'Alimentos',color:'#10b981',internal:false,neutral:false,kw:['unimarc','lider','jumbo','supermercado','minimarket','tottus']},
-  {name:'Kiosco Anabel',color:'#f59e0b',internal:false,neutral:false,kw:['dulce anabel']},
-  {name:'Restaurantes y Comida',color:'#f43f5e',internal:false,neutral:false,kw:['taller la obra','comida rapida','restaurant','mamacocha','rappi']},
-  {name:'Servicios Digitales',color:'#8b5cf6',internal:false,neutral:false,kw:['claude.ai','microsoft','netflix','spotify']},
-  {name:'Seguros y Créditos',color:'#475569',internal:false,neutral:false,kw:['seguro','mapfre','consorcio','credito','cuota','prestamo','bci seguros']},
-  {name:'Transferencias',color:'#38bdf8',internal:false,neutral:false,kw:['transf','transferencia','deposito','multipago','abono']}
+  {name:'Remuneraciones',color:'#0ea5e9',internal:false,neutral:false,kw:[]},
+  {name:'Arriendo',color:'#a855f7',internal:false,neutral:false,kw:[]},
+  {name:'Luz',color:'#facc15',internal:false,neutral:false,kw:[]},
+  {name:'Agua',color:'#06b6d4',internal:false,neutral:false,kw:[]},
+  {name:'Internet y Telefonía',color:'#6366f1',internal:false,neutral:false,kw:[]},
+  {name:'Combustible',color:'#78716c',internal:false,neutral:false,kw:[]},
+  {name:'Repuestos Vehículo',color:'#64748b',internal:false,neutral:false,kw:[]},
+  {name:'Salud',color:'#ec4899',internal:false,neutral:false,kw:[]},
+  {name:'Educación',color:'#14b8a6',internal:false,neutral:false,kw:[]},
+  {name:'Ropa y Hogar',color:'#d946ef',internal:false,neutral:false,kw:[]},
+  {name:'Alimentos',color:'#10b981',internal:false,neutral:false,kw:[]},
+  {name:'Kiosco Anabel',color:'#f59e0b',internal:false,neutral:false,kw:[]},
+  {name:'Restaurantes y Comida',color:'#f43f5e',internal:false,neutral:false,kw:[]},
+  {name:'Servicios Digitales',color:'#8b5cf6',internal:false,neutral:false,kw:[]},
+  {name:'Seguros y Créditos',color:'#475569',internal:false,neutral:false,kw:[]},
+  {name:'Transferencias',color:'#38bdf8',internal:false,neutral:false,kw:['transf','transferencia','deposito','abono de terceros','transf de terceros']}
 ];
 const DEFAULT_CAT = {name:'Otros Gastos',color:'#71717a',internal:false,neutral:false,kw:[]};
+
+/** Reglas por texto del banco — orden importa (más específico primero). Basado en cartola real. */
+const DESC_RULES=[
+  {cat:'Movimiento Interno Banco',kw:['impuesto sobregiro','intereses linea de credito','intereses lin','amortizacion','uso lca','traspaso con la cuenta','traspaso internet desde l','desde lcredito','lca n']},
+  {cat:'Arriendo',kw:['luz hidalgo','pago en linea arriendo','inmobiliaria','cevilar',' arriendo']},
+  {cat:'Luz',kw:['pago en linea chilquinta','chilquinta','cge dist','enel dist','enel ','saesa','cooprel','metrogas','electricidad']},
+  {cat:'Agua',kw:['pago en linea esval','esval','aguas andinas','smec','smaesa','sanitaria']},
+  {cat:'Internet y Telefonía',kw:['telefonica del sur','tel sur','movistar','entel','wom','claro','vtr','gtos fijos','telefonia']},
+  {cat:'Kiosco Anabel',kw:['dulce anabel','dulce amor']},
+  {cat:'Combustible',kw:['copec','shell','petrobras','bencina','combustible','elohim cars','estacion de servicio']},
+  {cat:'Alimentos',kw:['unimarc','jumbo','lider','tottus','ok market','okmarket','santa isabel','mayorista 10','mayorista10','mini market','minimarket','mini mercado','mini market','almacen ','economico ','acuenta ','meridiana','campo lindo','el sabor chile','pasteleria','elaboracion de pan','panque']},
+  {cat:'Restaurantes y Comida',kw:['panaderia','pan de miel','dolce capri','doggi','mcdonald','burger king','kfc','domino','pizza hut','pizza ','sushi','restaurant','restor','rappi','pedidos ya','pedidosya','uber eats','mamacocha','taller la obra','inversiones ma','comida rapida','comercial el sabor']},
+  {cat:'Servicios Digitales',kw:['microsoft','google','google one','google*','apple.com','itunes','netflix','spotify','claude.ai','amazon prime','disney','hbo','max.com','adobe','dropbox','openai','cursor','github','pago recurrente google','pago recurrente microsoft','pago recurrente apple','pago recurrente netflix','pago recurrente spotify','pago recurrente internacional vd cl']},
+  {cat:'Salud',kw:['farmacia','cruz verde','salcobrand','ahumada','smart fit','clinica','hospital','fonasa','isapre','consalud','centro medico']},
+  {cat:'Ropa y Hogar',kw:['falabella','ripley','paris ','sodimac','homecenter','hites','corona','mercado libre','mercadolibre','la polar','reparacion calzado','compra de ropa','ferreteria','construmart','easy ']},
+  {cat:'Repuestos Vehículo',kw:['repuesto','famae','familae','automotriz','neumatico','autopartes','revision tecnica','revisiontecnica','seguro obligatorio','tag ','revision tec','municipalidad']},
+  {cat:'Seguros y Créditos',kw:['mapfre','consorcio','bci seguros','sudamericana',' metlife','zurich','seguro ','credito','cuota','prestamo','multipago en linea','pago tarjeta']},
+  {cat:'Educación',kw:['colegio','universidad','matricula','academia']},
+  {cat:'Remuneraciones',kw:['remuneracion','sueldo','liquidacion','haberes','fundacion']}
+];
 
 let CUSTOM_CATS=[], OVERRIDES={}, PERIOD_OVERRIDES={}, TX=[], META={hastaYear:2026}, BAL={}, lastFileName='';
 let chart=null, filter='all', includeInternal=false;
@@ -340,7 +371,7 @@ function shiftSelectedPeriod(delta){
   ensureSelectedPeriod();
   const keys=periods.map(p=>p.key).sort();
   let idx=keys.indexOf(periodKey(selectedPeriod));
-  if(idx<0) idx=0;
+  if(idx<0) idx=keys.length-1;
   idx=Math.max(0,Math.min(keys.length-1,idx+delta));
   selectedPeriod=parsePeriodKey(keys[idx]);
 }
@@ -432,7 +463,18 @@ function catColor(n){return findCat(n).color;}
 function isInternalCat(c){return !!(c&&c.internal);}
 function isNeutralCat(c){return !!(c&&c.neutral);}
 function getPasoCat(){return BASE_CATS.find(c=>c.name==='Pasó por la cuenta');}
-function categorizar(d){const t=normText(d);for(const c of BASE_CATS)if(c.kw.some(k=>t.includes(normText(k))))return c;return DEFAULT_CAT;}
+function categorizar(d){
+  const t=normText(d);
+  for(const r of DESC_RULES)
+    if(r.kw.some(k=>t.includes(normText(k)))) return findCat(r.cat);
+  for(const c of BASE_CATS)
+    if(c.kw.some(k=>t.includes(normText(k)))) return c;
+  return DEFAULT_CAT;
+}
+
+function applyAutoCategories(){
+  TX.forEach(t=>{if(!OVERRIDES[txKey(t)]) t.cat=categorizar(t.desc);});
+}
 
 /** No emparejar sueldo ni transferencias recibidas como "pasó por la cuenta". */
 function skipPassthroughSide(t,cat){
@@ -474,19 +516,73 @@ function getOperationalTx(){return getVisibleTx().filter(t=>!isNeutralCat(t.cat)
 function serializeTx(){return TX.map(t=>({date:t.date.toISOString(),desc:t.desc,amount:t.amount}));}
 function deserializeTx(arr){
   TX=arr.map(t=>({date:new Date(t.date),desc:t.desc,amount:t.amount,cat:categorizar(t.desc)}));
+  applyAutoCategories();
   detectPassthroughPairs();
   return TX;
 }
 
 function updateDropzoneUI(){
   const has=TX.length>0;
-  document.getElementById('dropzoneTitle').textContent=has?'Actualizar cartola':'Cargar Cartola Santander';
-  document.getElementById('dropzoneSub').textContent=has?(lastFileName?'Último: '+lastFileName:'Toca para subir nuevo Excel'):'Excel (.xlsx)';
+  document.getElementById('dropzoneTitle').textContent=has?'Agregar cartola de otro mes':'Cargar Cartola Santander';
+  document.getElementById('dropzoneSub').textContent=has
+    ?`Se suma al historial · ${txRangeLabel()}`
+    :'Excel mensual del Santander (.xlsx)';
+  document.getElementById('dropzoneClear').classList.toggle('hidden',!has);
+}
+
+function txRangeLabel(){
+  if(!TX.length) return '0 movimientos';
+  const d=TX.map(t=>t.date).sort((a,b)=>a-b);
+  const a=d[0], b=d[d.length-1], fm=m=>MESES[m.getMonth()].slice(0,3);
+  const range=a.getMonth()===b.getMonth()&&a.getFullYear()===b.getFullYear()
+    ?`${fm(a)} ${a.getFullYear()}`
+    :`${fm(a)}–${fm(b)} ${b.getFullYear()}`;
+  return `${range} · ${TX.length} mov.`;
+}
+
+function extractFromRows(rows){
+  const h=rows.findIndex(r=>String(r[0]||'').toUpperCase().startsWith('FECHA'));
+  if(h<0) return null;
+  let year=META.hastaYear;
+  for(let i=0;i<h;i++)for(let j=0;j<rows[i].length;j++)
+    if(normText(rows[i][j])==='hasta'){const m=String(rows[i][j+1]||'').match(/(\d{4})/);if(m)year=+m[1];}
+  const txs=[];
+  for(let i=h+1;i<rows.length;i++){
+    const r=rows[i]; if(!r||r.length<5) continue;
+    const date=parseFecha(r[0],year), desc=String(r[2]||'').trim();
+    const amt=parseMonto(r[5])-parseMonto(r[4]);
+    if(date&&desc&&amt!==0) txs.push({date,desc,amount:amt,cat:categorizar(desc)});
+  }
+  return {txs,year};
+}
+
+function mergeTransactions(incoming){
+  const map=new Map();
+  TX.forEach(t=>map.set(txKey(t),t));
+  let added=0;
+  incoming.forEach(t=>{
+    const k=txKey(t);
+    if(!map.has(k)){map.set(k,t);added++;}
+  });
+  TX=[...map.values()].sort((a,b)=>a.date-b.date);
+  if(TX.length) META.hastaYear=Math.max(...TX.map(t=>t.date.getFullYear()));
+  return added;
+}
+
+function setProcessing(on,msg){
+  const el=document.getElementById('processingOverlay');
+  if(msg) document.getElementById('processingMsg').textContent=msg;
+  el.classList.toggle('hidden',!on);
 }
 
 function persistCartola(){
   if(!TX.length) return;
-  localStorage.setItem('cartola-cache',JSON.stringify({fileName:lastFileName,metaHastaYear:META.hastaYear,txs:serializeTx(),savedAt:Date.now()}));
+  try{
+    localStorage.setItem('cartola-cache',JSON.stringify({fileName:lastFileName,metaHastaYear:META.hastaYear,txs:serializeTx(),savedAt:Date.now()}));
+  }catch(e){
+    alert('No se pudo guardar en el navegador (memoria llena). Prueba en Historial vaciar meses viejos o usa otro dispositivo.');
+    console.error(e);
+  }
 }
 
 function loadCartolaFromLocal(){
@@ -601,10 +697,14 @@ function parseMonto(v){
   return (neg?-1:1)*(parseInt(s.replace(/[^0-9]/g,''),10)||0);
 }
 
-function parseFecha(v){
+function parseFecha(v,year){
   if(v instanceof Date&&!isNaN(v)) return v;
-  const m=String(v).trim().match(/(\d{1,2})[\/\-.](\d{1,2})/);
-  return m?new Date(META.hastaYear,+m[2]-1,+m[1]):null;
+  const s=String(v).trim();
+  let m=s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
+  m=s.match(/(\d{1,2})[\/\-.](\d{1,2})/);
+  const y=year??META.hastaYear;
+  return m?new Date(y,+m[2]-1,+m[1]):null;
 }
 
 function simulate(allTx){
@@ -689,22 +789,38 @@ function catBreakdown(ops,positive){
 
 function renderFlow(ops){
   const wrap=document.getElementById('flowWrap');
-  const sorted=[...ops].sort((a,b)=>a.date-b.date||a.amount-b.amount);
-  if(!sorted.length){wrap.classList.add('hidden');return;}
+  const noteEl=document.getElementById('flowNote');
+  if(!ops.length){wrap.classList.add('hidden');return;}
   wrap.classList.remove('hidden');
+  const pk=selectedPeriod?periodKey(selectedPeriod):'';
+  const shiftedOut=pk?getAllOperationalTx().filter(t=>t.shifted&&periodKey(t.bank)===pk&&t.periodKey!==pk):[];
+  const shiftedIn=ops.filter(t=>t.shifted);
+  let note='';
+  if(shiftedOut.length){
+    const total=shiftedOut.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0);
+    const dest=shiftedOut[0]?periodLabel(shiftedOut[0].acct):'';
+    note=`El sueldo de fin de mes (${fmt(total)}) se contabiliza en ${dest}, no aquí. Por eso este flujo arranca sin ese ingreso.`;
+  }else if(shiftedIn.length){
+    note=`Incluye ${shiftedIn.length} ingreso${shiftedIn.length!==1?'s':''} de fin de mes anterior contabilizado${shiftedIn.length!==1?'s':''} aquí.`;
+  }
+  if(note){noteEl.textContent=note;noteEl.classList.remove('hidden');}else{noteEl.classList.add('hidden');}
+  const sorted=[...ops].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
   let bal=0;
-  document.getElementById('flowList').innerHTML=sorted.map(t=>{
+  const rows=[`<li class="flex justify-between text-[10px] text-white/35 pb-2 border-b border-line/40"><span>Inicio del mes</span><span class="num">$0</span></li>`];
+  sorted.forEach(t=>{
     bal+=t.amount;
     const short=t.desc.length>36?t.desc.slice(0,36)+'…':t.desc;
-    return `<li class="flex gap-2 items-start text-xs border-b border-line/40 pb-2 last:border-0">
+    rows.push(`<li class="flex gap-2 items-start text-xs border-b border-line/40 pb-2 last:border-0">
       <span class="text-white/35 shrink-0 w-12 pt-0.5">${String(t.date.getDate()).padStart(2,'0')}/${String(t.date.getMonth()+1).padStart(2,'0')}</span>
       <div class="flex-1 min-w-0">
-        <p class="${t.amount>0?'text-ingreso':'text-gasto'} num font-medium">${t.amount>0?'+':'−'}${fmt(Math.abs(t.amount))}</p>
+        <p class="${t.amount>0?'text-ingreso':'text-gasto'} num font-medium">${t.amount>0?'+':'−'}${fmt(Math.abs(t.amount))}${t.shifted?' <span class="text-white/30">↪</span>':''}</p>
         <p class="text-white/40 truncate">${short}</p>
       </div>
       <span class="num font-semibold shrink-0 pt-0.5 ${bal>=0?'text-white':'text-gasto'}">${fmt(bal)}</span>
-    </li>`;
-  }).join('');
+    </li>`);
+  });
+  rows.push(`<li class="flex justify-between text-xs font-medium pt-2 mt-1"><span class="text-white/50">Saldo final (= Te quedó)</span><span class="num ${bal>=0?'text-ingreso':'text-gasto'}">${fmt(bal)}</span></li>`);
+  document.getElementById('flowList').innerHTML=rows.join('');
 }
 
 function render(){
@@ -782,36 +898,77 @@ function renderGastos(base){
 }
 
 function procesar(rows){
-  const h=rows.findIndex(r=>String(r[0]||'').toUpperCase().startsWith('FECHA'));
-  if(h<0){alert('No se halló la tabla de movimientos');return;}
-  for(let i=0;i<h;i++)for(let j=0;j<rows[i].length;j++)
-    if(normText(rows[i][j])==='hasta'){const m=String(rows[i][j+1]||'').match(/(\d{4})/);if(m)META.hastaYear=+m[1];}
-  TX=[];
-  for(let i=h+1;i<rows.length;i++){
-    const r=rows[i]; if(!r||r.length<5) continue;
-    const date=parseFecha(r[0]), desc=String(r[2]||'').trim();
-    const amt=parseMonto(r[5])-parseMonto(r[4]);
-    if(date&&desc&&amt!==0) TX.push({date,desc,amount:amt,cat:categorizar(desc)});
-  }
+  const ex=extractFromRows(rows);
+  if(!ex){setProcessing(false);alert('No se halló la tabla de movimientos');return;}
+  const had=TX.length;
+  setProcessing(true,'Uniendo movimientos…');
+  const added=mergeTransactions(ex.txs);
+  applyAutoCategories();
   detectPassthroughPairs();
   persistCartola();
   saveCloud();
   updateDropzoneUI();
   render();
+  setProcessing(false);
+  const box=document.getElementById('errorBox');
+  if(had&&added===0){
+    box.textContent='Este mes ya estaba cargado — no se duplicaron movimientos.';
+    box.className='mt-4 text-sm text-white/70 bg-panel2 border border-line rounded-xl px-4 py-3';
+    box.classList.remove('hidden');
+    setTimeout(()=>box.classList.add('hidden'),4000);
+  }else if(added>0){
+    box.textContent=had?`+${added} movimientos agregados · ${txRangeLabel()}`:`Cartola cargada · ${txRangeLabel()}`;
+    box.className='mt-4 text-sm text-ingreso bg-ingreso/10 border border-ingreso/30 rounded-xl px-4 py-3';
+    box.classList.remove('hidden');
+    setTimeout(()=>box.classList.add('hidden'),4000);
+  }
+}
+
+function clearAllCartola(){
+  if(!confirm('¿Borrar todo el historial de cartolas, categorías manuales y meses asignados?')) return;
+  TX=[]; OVERRIDES={}; PERIOD_OVERRIDES={}; lastFileName='';
+  localStorage.removeItem('cartola-cache');
+  localStorage.removeItem('cartola-overrides');
+  localStorage.removeItem('cartola-period-overrides');
+  localStorage.removeItem('cartola-selected-period');
+  selectedPeriod=null;
+  saveCloud();
+  updateDropzoneUI();
+  render();
+  document.getElementById('summary').classList.add('hidden');
+  document.getElementById('flowWrap').classList.add('hidden');
+  document.getElementById('emptyHint').classList.remove('hidden');
+  document.getElementById('periodBar').classList.add('hidden');
 }
 
 // ── Eventos ──
 document.getElementById('fileInput').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f) return;
   lastFileName=f.name;
-  if(!currentUser) document.getElementById('fileLabel').textContent=f.name;
+  setProcessing(true,'Leyendo '+f.name+'…');
   const reader=new FileReader();
   reader.onload=ev=>{
-    const wb=XLSX.read(ev.target.result,{type:'array'});
-    procesar(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}));
+    setTimeout(()=>{
+      try{
+        setProcessing(true,'Procesando movimientos…');
+        const wb=XLSX.read(ev.target.result,{type:'array'});
+        procesar(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}));
+        if(!currentUser&&TX.length) document.getElementById('fileLabel').textContent=txRangeLabel();
+      }catch(err){
+        setProcessing(false);
+        alert('Error al leer el Excel: '+err.message);
+        console.error(err);
+      }
+    },30);
   };
+  reader.onerror=()=>{setProcessing(false);alert('No se pudo leer el archivo');};
   reader.readAsArrayBuffer(f);
   e.target.value='';
+});
+document.getElementById('dropzoneClear').addEventListener('click',e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  clearAllCartola();
 });
 
 document.getElementById('legend').addEventListener('click',e=>{
@@ -923,8 +1080,8 @@ document.getElementById('internalToggle').addEventListener('click',()=>{
   if(TX.length) render();
 });
 
-document.getElementById('periodPrev').addEventListener('click',()=>{shiftSelectedPeriod(1);saveCloud();render();});
-document.getElementById('periodNext').addEventListener('click',()=>{shiftSelectedPeriod(-1);saveCloud();render();});
+document.getElementById('periodPrev').addEventListener('click',()=>{shiftSelectedPeriod(-1);saveCloud();render();});
+document.getElementById('periodNext').addEventListener('click',()=>{shiftSelectedPeriod(1);saveCloud();render();});
 document.getElementById('periodLabel').addEventListener('click',()=>showView('historial'));
 document.getElementById('yearGroups').addEventListener('click',e=>{
   const btn=e.target.closest('.hist-btn');
