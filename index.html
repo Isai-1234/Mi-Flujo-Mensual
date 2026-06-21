@@ -122,7 +122,7 @@
 
   <section id="view-historial" class="hidden px-5 pt-5">
     <h2 class="text-base font-semibold mb-1">Historial por mes</h2>
-    <p class="text-xs text-white/40 mb-4">Toca un mes para ver entradas, gastos y categorías. El sueldo del 29–31 entra solo al mes siguiente.</p>
+    <p class="text-xs text-white/40 mb-4">Toca un mes para ver entradas, gastos y categorías según la fecha del banco.</p>
     <div id="yearGroups" class="space-y-5"></div>
     <p id="noHistorial" class="hidden text-center text-sm text-white/40 mt-10">Carga una cartola para ver el historial mensual.</p>
   </section>
@@ -342,23 +342,11 @@ function periodKey(p){return `${p.year}-${String(p.month+1).padStart(2,'0')}`;}
 function parsePeriodKey(k){const [y,m]=k.split('-');return {year:+y,month:+m-1};}
 function periodLabel(p){return `${MESES[p.month]} ${p.year}`;}
 function bankPeriod(t){return {year:t.date.getFullYear(),month:t.date.getMonth()};}
-function isLateSalary(t,cat){
-  if(t.amount<=0) return false;
-  const n=normText(t.desc);
-  const isSalary=cat.name==='Remuneraciones'||SUELDO_KW.some(k=>n.includes(k));
-  return isSalary&&t.date.getDate()>=29;
-}
-function defaultAccountingPeriod(t,cat){
-  if(isLateSalary(t,cat)){
-    const d=new Date(t.date.getFullYear(),t.date.getMonth()+1,1);
-    return {year:d.getFullYear(),month:d.getMonth()};
-  }
-  return bankPeriod(t);
-}
+function defaultAccountingPeriod(t){return bankPeriod(t);}
 function getAccountingPeriod(t){
   const key=txKey(t), ov=PERIOD_OVERRIDES[key];
   if(ov) return parsePeriodKey(ov);
-  return defaultAccountingPeriod(t,getCat(t));
+  return defaultAccountingPeriod(t);
 }
 function txInPeriod(t,p){const a=getAccountingPeriod(t);return a.year===p.year&&a.month===p.month;}
 function enrichTx(t){const cat=getCat(t),acct=getAccountingPeriod(t),bank=bankPeriod(t);return {...t,cat,acct,bank,periodKey:periodKey(acct),shifted:periodKey(acct)!==periodKey(bank)};}
@@ -399,19 +387,19 @@ function renderPeriodBar(){
   const ops=getOperationalTxForPeriod(selectedPeriod);
   document.getElementById('periodSub').textContent=`${ops.length} movimiento${ops.length!==1?'s':''} contables`;
 }
-function getPeriodSalaryNote(p){
+function getPeriodShiftNote(p){
   const pk=periodKey({year:p.year,month:p.month});
   const all=getAllOperationalTx();
-  const out=all.filter(t=>t.shifted&&t.amount>0&&periodKey(t.bank)===pk);
-  const inn=all.filter(t=>t.shifted&&t.amount>0&&t.periodKey===pk);
+  const out=all.filter(t=>t.shifted&&periodKey(t.bank)===pk&&t.periodKey!==pk);
+  const inn=all.filter(t=>t.shifted&&t.periodKey===pk&&periodKey(t.bank)!==pk);
   const parts=[];
   if(out.length){
-    const tot=out.reduce((a,t)=>a+t.amount,0);
-    parts.push(`Sueldo fin de mes (${fmt(tot)}) contado en ${MESES[out[0].acct.month].slice(0,3)}`);
+    const tot=out.reduce((a,t)=>a+Math.abs(t.amount),0);
+    parts.push(`${out.length} mov. (${fmt(tot)}) contados en ${MESES[out[0].acct.month].slice(0,3)}`);
   }
   if(inn.length){
-    const tot=inn.reduce((a,t)=>a+t.amount,0);
-    parts.push(`Incluye sueldo de ${MESES[inn[0].bank.month].slice(0,3)} (${fmt(tot)})`);
+    const tot=inn.reduce((a,t)=>a+Math.abs(t.amount),0);
+    parts.push(`Incluye ${inn.length} mov. de ${MESES[inn[0].bank.month].slice(0,3)} (${fmt(tot)})`);
   }
   return parts.join(' · ');
 }
@@ -427,7 +415,7 @@ function renderHistorial(){
       <p class="text-xs uppercase tracking-wide text-white/35 mb-2">${y}</p>
       <div class="space-y-2">
         ${byYear[y].map(p=>{
-          const salNote=getPeriodSalaryNote(p);
+          const salNote=getPeriodShiftNote(p);
           return `
           <button type="button" data-period="${p.key}" class="hist-btn w-full rounded-2xl bg-panel border ${selectedPeriod&&p.key===periodKey(selectedPeriod)?'border-ingreso/50':'border-line'} px-4 py-3 text-left active:bg-panel2">
             <div class="flex justify-between gap-3 items-start">
@@ -965,11 +953,12 @@ function renderFlow(ops){
   const shiftedIn=ops.filter(t=>t.shifted);
   let note='';
   if(shiftedOut.length){
-    const total=shiftedOut.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0);
+    const total=shiftedOut.reduce((a,t)=>a+Math.abs(t.amount),0);
     const dest=shiftedOut[0]?periodLabel(shiftedOut[0].acct):'';
-    note=`El sueldo de fin de mes (${fmt(total)}) se contabiliza en ${dest}, no aquí. Por eso este flujo arranca sin ese ingreso.`;
+    note=`${shiftedOut.length} movimiento${shiftedOut.length!==1?'s':''} (${fmt(total)}) contabilizado${shiftedOut.length!==1?'s':''} en ${dest}, no aquí.`;
   }else if(shiftedIn.length){
-    note=`Incluye ${shiftedIn.length} ingreso${shiftedIn.length!==1?'s':''} de fin de mes anterior contabilizado${shiftedIn.length!==1?'s':''} aquí.`;
+    const orig=shiftedIn[0]?periodLabel({year:shiftedIn[0].bank.year,month:shiftedIn[0].bank.month}):'';
+    note=`Incluye ${shiftedIn.length} movimiento${shiftedIn.length!==1?'s':''} de ${orig} asignado${shiftedIn.length!==1?'s':''} a este mes manualmente.`;
   }
   if(note){noteEl.textContent=note;noteEl.classList.remove('hidden');}else{noteEl.classList.add('hidden');}
   const sorted=[...ops].sort((a,b)=>a.date-b.date||(b.amount-a.amount));
