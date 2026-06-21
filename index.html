@@ -87,19 +87,26 @@
         </div>
         <div class="mt-4 grid grid-cols-2 gap-3">
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Entradas del mes</p>
+            <p class="text-[11px] text-white/40">Cuánto ganaste</p>
             <p id="totEntradas" class="num text-lg font-semibold text-ingreso">$0</p>
+            <p id="entradasDetalle" class="text-[10px] text-white/30 mt-1 leading-snug"></p>
           </div>
           <div class="rounded-2xl bg-panel2 border border-line p-3">
-            <p class="text-[11px] text-white/40">Gastos del mes</p>
+            <p class="text-[11px] text-white/40">Cuánto gastaste</p>
             <p id="totGastos" class="num text-lg font-semibold text-gasto">$0</p>
+            <p id="gastosDetalle" class="text-[10px] text-white/30 mt-1 leading-snug"></p>
           </div>
         </div>
         <div class="mt-3 rounded-2xl bg-panel2 border border-line px-3 py-2 flex justify-between items-center">
-          <span class="text-[11px] text-white/40">Balance del mes</span>
+          <span class="text-[11px] text-white/40">Te quedó (ganaste − gastaste)</span>
           <span id="totNeto" class="num text-sm font-semibold">$0</span>
         </div>
-        <p class="text-[10px] text-white/30 mt-3">Solo el sueldo del 29–31 se mueve solo al mes siguiente. Cualquier otro movimiento lo asignas tú en Cambiar.</p>
+        <p class="text-[10px] text-white/30 mt-3">Suma todo lo que entró y salió en el mes contable: sueldo, transferencias recibidas, compras, etc. No cuenta dinero que solo pasó por la cuenta.</p>
+      </div>
+      <div id="flowWrap" class="hidden rounded-3xl bg-panel border border-line p-5">
+        <p class="text-xs uppercase tracking-wide text-white/40 mb-1">Flujo del mes</p>
+        <p class="text-[10px] text-white/30 mb-3">Cómo va sumando y restando tu plata, en orden de fecha.</p>
+        <ul id="flowList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
       </div>
       <button id="internalToggle" class="hidden w-full flex items-center justify-between gap-3 rounded-2xl bg-panel border border-line px-4 py-3 text-left active:bg-panel2">
         <span class="text-sm">Ver traspasos LCA e impuestos</span>
@@ -272,7 +279,7 @@ const BASE_CATS = [
   {name:'Restaurantes y Comida',color:'#f43f5e',internal:false,neutral:false,kw:['taller la obra','comida rapida','restaurant','mamacocha','rappi']},
   {name:'Servicios Digitales',color:'#8b5cf6',internal:false,neutral:false,kw:['claude.ai','microsoft','netflix','spotify']},
   {name:'Seguros y Créditos',color:'#475569',internal:false,neutral:false,kw:['seguro','mapfre','consorcio','credito','cuota','prestamo','bci seguros']},
-  {name:'Transferencias',color:'#38bdf8',internal:false,neutral:false,kw:['transf.','transferencia','deposito','multipago']}
+  {name:'Transferencias',color:'#38bdf8',internal:false,neutral:false,kw:['transf','transferencia','deposito','multipago','abono']}
 ];
 const DEFAULT_CAT = {name:'Otros Gastos',color:'#71717a',internal:false,neutral:false,kw:[]};
 
@@ -427,11 +434,18 @@ function isNeutralCat(c){return !!(c&&c.neutral);}
 function getPasoCat(){return BASE_CATS.find(c=>c.name==='Pasó por la cuenta');}
 function categorizar(d){const t=normText(d);for(const c of BASE_CATS)if(c.kw.some(k=>t.includes(normText(k))))return c;return DEFAULT_CAT;}
 
+/** No emparejar sueldo ni transferencias recibidas como "pasó por la cuenta". */
+function skipPassthroughSide(t,cat){
+  if(t.amount<=0) return false;
+  if(cat.name==='Remuneraciones'||cat.name==='Transferencias') return true;
+  return SUELDO_KW.some(k=>normText(t.desc).includes(k));
+}
+
 /** Empareja abonos y cargos del mismo monto en ±3 días (ej. seguro que entra y se transfiere). */
 function detectPassthroughPairs(){
   const PASO=getPasoCat();
   const used=new Set(), DAY=86400000, MAX=3;
-  const idx=TX.map((t,i)=>({t,i})).filter(({t,i})=>!used.has(i)&&!OVERRIDES[txKey(t)]&&!isInternalCat(getCat(t)));
+  const idx=TX.map((t,i)=>({t,i,cat:getCat(t)})).filter(({t,i,cat})=>!used.has(i)&&!OVERRIDES[txKey(t)]&&!isInternalCat(cat)&&!skipPassthroughSide(t,cat));
   for(let a=0;a<idx.length;a++){
     const {t:ta,i:ia}=idx[a];
     if(used.has(ia)) continue;
@@ -667,6 +681,32 @@ function setPeriodOverride(key,mode,year,month){
   }
 }
 
+function catBreakdown(ops,positive){
+  const g={};
+  ops.filter(t=>positive?t.amount>0:t.amount<0).forEach(t=>{g[t.cat.name]=(g[t.cat.name]||0)+Math.abs(t.amount);});
+  return Object.entries(g).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ');
+}
+
+function renderFlow(ops){
+  const wrap=document.getElementById('flowWrap');
+  const sorted=[...ops].sort((a,b)=>a.date-b.date||a.amount-b.amount);
+  if(!sorted.length){wrap.classList.add('hidden');return;}
+  wrap.classList.remove('hidden');
+  let bal=0;
+  document.getElementById('flowList').innerHTML=sorted.map(t=>{
+    bal+=t.amount;
+    const short=t.desc.length>36?t.desc.slice(0,36)+'…':t.desc;
+    return `<li class="flex gap-2 items-start text-xs border-b border-line/40 pb-2 last:border-0">
+      <span class="text-white/35 shrink-0 w-12 pt-0.5">${String(t.date.getDate()).padStart(2,'0')}/${String(t.date.getMonth()+1).padStart(2,'0')}</span>
+      <div class="flex-1 min-w-0">
+        <p class="${t.amount>0?'text-ingreso':'text-gasto'} num font-medium">${t.amount>0?'+':'−'}${fmt(Math.abs(t.amount))}</p>
+        <p class="text-white/40 truncate">${short}</p>
+      </div>
+      <span class="num font-semibold shrink-0 pt-0.5 ${bal>=0?'text-white':'text-gasto'}">${fmt(bal)}</span>
+    </li>`;
+  }).join('');
+}
+
 function render(){
   ensureSelectedPeriod();
   const base=getVisibleTx();
@@ -680,9 +720,12 @@ function render(){
   const gas=ops.filter(t=>t.amount<0).reduce((a,t)=>a+Math.abs(t.amount),0);
   document.getElementById('totEntradas').textContent=fmt(ent);
   document.getElementById('totGastos').textContent=fmt(gas);
+  document.getElementById('entradasDetalle').textContent=ent?catBreakdown(ops,true):'';
+  document.getElementById('gastosDetalle').textContent=gas?catBreakdown(ops,false):'';
   const netEl=document.getElementById('totNeto');
   netEl.textContent=fmt(ent-gas);
   netEl.className='num text-sm font-semibold '+(ent-gas>=0?'text-ingreso':'text-gasto');
+  renderFlow(ops);
   renderPeriodBar();
   document.getElementById('summary').classList.remove('hidden');
   document.getElementById('emptyHint').classList.add('hidden');
