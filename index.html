@@ -67,9 +67,9 @@
       </div>
       <p id="dropzoneTitle" class="font-medium text-sm">Cargar Cartola Santander</p>
       <p id="dropzoneSub" class="mt-0.5 text-xs text-white/40">Excel (.xlsx)</p>
-      <button id="dropzoneClear" type="button" class="hidden mt-3 text-[10px] text-gasto/80 underline">Vaciar historial y empezar de cero</button>
       <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
     </label>
+    <button id="dropzoneClear" type="button" class="hidden mt-2 w-full text-[10px] text-gasto/80 underline py-1">Vaciar historial y empezar de cero</button>
     <p id="errorBox" class="hidden mt-4 text-sm text-gasto bg-gasto/10 border border-gasto/30 rounded-xl px-4 py-3"></p>
     <div id="summary" class="hidden mt-4 space-y-4">
       <div class="rounded-3xl bg-panel border border-line p-5">
@@ -621,23 +621,26 @@ function persistLocal(){
 
 function setSync(t){document.getElementById('syncStatus').textContent=t;}
 
+async function flushCloudNow(){
+  if(!cloudEnabled||!currentUser) return;
+  clearTimeout(saveTimer);
+  setSync('Guardando…');
+  await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
+    overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS,
+    baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
+    transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
+    selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  },{merge:true});
+  setSync('☁️ Sync');
+}
+
 function saveCloud(){
   persistLocal();
   if(!cloudEnabled||!currentUser) return;
   clearTimeout(saveTimer);
   setSync('Guardando…');
-  saveTimer=setTimeout(async()=>{
-    try{
-      await db.collection('users').doc(currentUser.uid).collection('cartola').doc('datos').set({
-        overrides:OVERRIDES, periodOverrides:PERIOD_OVERRIDES, customCats:CUSTOM_CATS,
-        baseline:{cc:BASELINE.cc,lineaDisp:BASELINE.lineaDisp,cupo:BASELINE.cupo,asOf:BASELINE.asOf.toISOString()},
-        transactions:serializeTx(), fileName:lastFileName, metaHastaYear:META.hastaYear,
-        selectedPeriod:selectedPeriod?periodKey(selectedPeriod):null,
-        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-      },{merge:true});
-      setSync('☁️ Sync');
-    }catch(e){setSync('Error sync');console.error(e);}
-  },600);
+  saveTimer=setTimeout(()=>flushCloudNow().catch(e=>{setSync('Error sync');console.error(e);}),600);
 }
 
 async function loadCloud(){
@@ -667,14 +670,20 @@ async function loadCloud(){
         });
       }
       if(d.transactions?.length){
+        const clearedAt=+(localStorage.getItem('cartola-cleared')||0);
         const localSaved=+(JSON.parse(localStorage.getItem('cartola-cache')||'{}').savedAt||0);
         const cloudSaved=d.updatedAt?.toMillis?.()||0;
-        if(d.transactions.length>=TX.length||cloudSaved>=localSaved){
+        if(clearedAt>cloudSaved){
+          await flushCloudNow();
+        }else if(d.transactions.length>=TX.length||cloudSaved>=localSaved){
           META.hastaYear=d.metaHastaYear||META.hastaYear;
           lastFileName=d.fileName||lastFileName;
           TX=deserializeTx(d.transactions);
+          localStorage.removeItem('cartola-cleared');
           persistCartola();
         }
+      }else if(+(localStorage.getItem('cartola-cleared')||0)){
+        TX=[];
       }
     }else if(localCount>0||CUSTOM_CATS.length>0||TX.length){
       await ref.set({
@@ -903,6 +912,7 @@ function procesar(rows){
   const had=TX.length;
   setProcessing(true,'Uniendo movimientos…');
   const added=mergeTransactions(ex.txs);
+  localStorage.removeItem('cartola-cleared');
   applyAutoCategories();
   detectPassthroughPairs();
   persistCartola();
@@ -926,19 +936,32 @@ function procesar(rows){
 
 function clearAllCartola(){
   if(!confirm('¿Borrar todo el historial de cartolas, categorías manuales y meses asignados?')) return;
-  TX=[]; OVERRIDES={}; PERIOD_OVERRIDES={}; lastFileName='';
+  TX=[]; OVERRIDES={}; PERIOD_OVERRIDES={}; CUSTOM_CATS=[]; lastFileName=''; selectedPeriod=null;
   localStorage.removeItem('cartola-cache');
   localStorage.removeItem('cartola-overrides');
   localStorage.removeItem('cartola-period-overrides');
+  localStorage.removeItem('cartola-custom-cats');
   localStorage.removeItem('cartola-selected-period');
-  selectedPeriod=null;
-  saveCloud();
-  updateDropzoneUI();
-  render();
-  document.getElementById('summary').classList.add('hidden');
-  document.getElementById('flowWrap').classList.add('hidden');
-  document.getElementById('emptyHint').classList.remove('hidden');
-  document.getElementById('periodBar').classList.add('hidden');
+  localStorage.setItem('cartola-cleared',Date.now().toString());
+  clearTimeout(saveTimer);
+  const done=()=>{
+    setProcessing(false);
+    updateDropzoneUI();
+    render();
+    document.getElementById('summary').classList.add('hidden');
+    document.getElementById('flowWrap').classList.add('hidden');
+    document.getElementById('emptyHint').classList.remove('hidden');
+    document.getElementById('periodBar').classList.add('hidden');
+    const box=document.getElementById('errorBox');
+    box.textContent='Historial borrado. Sube tus cartolas mes a mes.';
+    box.className='mt-4 text-sm text-ingreso bg-ingreso/10 border border-ingreso/30 rounded-xl px-4 py-3';
+    box.classList.remove('hidden');
+    setTimeout(()=>box.classList.add('hidden'),4000);
+  };
+  if(cloudEnabled&&currentUser){
+    setProcessing(true,'Borrando historial…');
+    flushCloudNow().finally(done);
+  }else done();
 }
 
 // ── Eventos ──
@@ -965,11 +988,7 @@ document.getElementById('fileInput').addEventListener('change',e=>{
   reader.readAsArrayBuffer(f);
   e.target.value='';
 });
-document.getElementById('dropzoneClear').addEventListener('click',e=>{
-  e.preventDefault();
-  e.stopPropagation();
-  clearAllCartola();
-});
+document.getElementById('dropzoneClear').addEventListener('click',()=>clearAllCartola());
 
 document.getElementById('legend').addEventListener('click',e=>{
   const btn=e.target.closest('.cat-link');
